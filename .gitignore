@@ -28,3 +28,6 @@ competition_data.csv
 commercial_land.csv
 traffic_data.csv
 
+chunks/
+population.geojson
+postcode_to_bua_mapped.csv

@@ -165,16 +165,12 @@ a:hover {
 /* Marker tweaks */
 .mapboxgl-popup {
   padding-bottom: 50px;
-}
-
-.mapboxgl-popup-close-button {
-  display: none;
+  width: fit-content;
 }
 
 .mapboxgl-popup-content {
   font: 400 15px/22px "Source Sans Pro", "Helvetica Neue", sans-serif;
   padding: 0;
-  width: 180px;
 }
 
 .mapboxgl-popup-content h3 {
@@ -185,6 +181,35 @@ a:hover {
   border-radius: 3px 3px 0 0;
   font-weight: 700;
   margin-top: -15px;
+}
+
+.mapboxgl-popup-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* Custom styles for Popup Close Button */
+.mapboxgl-popup-close-button {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 50%; /* Makes it circular */
+  background-color: rgba(0, 0, 0); /* Semi-transparent dark background */
+  color: black;
+  font-size: 16px; /* Size of the '×' character */
+  font-weight: bold;
+  line-height: 20px; /* Vertically center the '×' */
+  text-align: center;
+  cursor: pointer;
+  outline: none; /* Remove default focus outline if any */
+  z-index: 10; /* Ensure it's above other content */
+}
+
+.mapboxgl-popup-close-button:hover {
+  background-color: rgba(0, 0, 0); /* Darken on hover */
 }
 
 .mapboxgl-popup-content h4 {
@@ -235,7 +260,7 @@ a:hover {
 /* Selected Points Box Styles */
 .selected-points-box {
   position: absolute;
-  top: 140px;
+  top: 180px;
   right: 10px;
   background: rgba(255, 255, 255, 0.95);
   padding: 15px;
@@ -287,4 +312,89 @@ a:hover {
 
 .legend-item:last-child {
   margin-bottom: 0;
+}
+
+/* Custom Mapbox Popup Styles (Google Maps-like) */
+.custom-popup-content {
+  font-family: "Source Sans Pro", "Helvetica Neue", sans-serif;
+  padding: 15px;
+  line-height: 1.5;
+  color: #333;
+}
+
+.custom-popup-content h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #222;
+  background: none; /* Override default Mapbox h3 background */
+  padding: 0 0 10px 0; /* Override default Mapbox h3 padding, add bottom padding */
+  margin: 0; /* Reset margin, especially the -15px top margin from default Mapbox h3 */
+  border-radius: 0; /* Override default Mapbox h3 border-radius */
+}
+
+.custom-popup-content p {
+  margin: 8px 0;
+  font-size: 14px;
+}
+
+.popup-category {
+  font-size: 13px;
+  color: #555;
+  margin-top: 0; /* First element after title */
+  margin-bottom: 10px;
+}
+
+.popup-address {
+  font-size: 14px;
+  color: #444;
+}
+
+.popup-rating {
+  font-size: 13px;
+  color: #444;
+}
+
+.popup-rating strong {
+  color: #222;
+}
+
+.popup-phone,
+.popup-website {
+  font-size: 14px;
+  color: #444;
+}
+
+.popup-website a {
+  color: #007bff; /* Standard link blue */
+  text-decoration: none;
+}
+
+.popup-website a:hover {
+  text-decoration: underline;
+}
+
+.popup-description {
+  font-size: 13px;
+  color: #666;
+  margin-top: 12px;
+  white-space: pre-wrap; /* Preserve line breaks from description data */
+}
+
+.popup-photo-container {
+  margin-top: 12px;
+  text-align: center;
+}
+
+.popup-photo-container img {
+  max-width: 100%;
+  height: auto; /* Maintain aspect ratio */
+  max-height: 150px; /* Consistent max height */
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid #eee;
+}
+
+/* Ensure default Mapbox popup content padding is removed if our custom div is inside */
+.mapboxgl-popup-content {
+  padding: 0 !important; /* Override any existing padding */
 }

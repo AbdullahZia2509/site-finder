@@ -8,13 +8,18 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "postinstall": "flowbite-react patch"
+    "postinstall": "flowbite-react patch",
+    "preprocess": "node preprocess.mjs",
+    "process:images": "node process-images.mjs"
   },
   "dependencies": {
     "@mapbox/mapbox-gl-draw": "^1.4.0",
     "@mapbox/mapbox-gl-geocoder": "^5.0.3",
     "@tailwindcss/vite": "^4.1.8",
     "@turf/turf": "^6.5.0",
+    "aws-sdk": "^2.1692.0",
+    "axios": "^1.9.0",
+    "dotenv": "^16.5.0",
     "flowbite-react": "^0.11.8",
     "mapbox-gl": "^3.12.0",
     "papaparse": "^5.5.3",

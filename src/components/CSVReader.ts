@@ -1,5 +1,4 @@
-import Papa from "papaparse";
-
+// The types are used by other components, so we keep them here.
 export type GeoJSONFeatureCollection = {
   type: "FeatureCollection";
   features: GeoJSONFeature[];
@@ -15,9 +14,9 @@ export type GeoJSONFeature = {
     query?: string;
     name?: string;
     address?: string;
-    full_address?: string; // Added for richer address info
+    full_address?: string;
     phone?: string;
-    phone_1?: string; // Added as a fallback phone
+    phone_1?: string;
     site?: string;
     id?: number;
     outcode?: string;
@@ -30,302 +29,85 @@ export type GeoJSONFeature = {
     sector?: string;
     size?: string;
     type?: string;
-    category?: string; // Added for category/type info
+    category?: string;
     ukCountry?: string;
     url?: string;
     pointType?: string;
     year?: number;
     all_motor_vehicles?: number;
     BUA_Population?: number;
-    rating?: string | number; // Added for rating
-    reviews?: string | number; // Added for reviews count
-    description?: string; // Added for description
-    photo?: string; // Added for photo URL
+    rating?: string | number;
+    reviews?: string | number;
+    description?: string;
+    photo?: string;
   };
 };
 
+/**
+ * Fetches a pre-processed GeoJSON file.
+ * @param url The path to the .geojson file.
+ * @returns A Promise that resolves to a GeoJSONFeatureCollection.
+ */
+const fetchGeoJSON = async (url: string): Promise<GeoJSONFeatureCollection> => {
+  const response = await fetch(url);
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}. ${errorText}`);
+  }
+  return response.json();
+};
+
+// --- Refactored Data Fetching Functions ---
+
 export const readCompetitionsData = (): Promise<GeoJSONFeatureCollection> => {
-  return fetch("/competition_data.csv")
-    .then((response) => response.text())
-    .then((csvText) => {
-      return new Promise<GeoJSONFeatureCollection>((resolve, reject) => {
-        Papa.parse(csvText, {
-          header: true,
-          skipEmptyLines: true,
-          complete: (results) => {
-            try {
-              const tempObj: GeoJSONFeatureCollection = {
-                type: "FeatureCollection",
-                features: [],
-              };
-
-              results.data.forEach((row: any) => {
-                if (row.longitude === "" || row.latitude === "") return;
-                if (
-                  row.type === "Storage" ||
-                  row.type === "Self storage facility" ||
-                  row.type === "Storage facility"
-                ) {
-                  console.log(row.type);
-                  const { longitude, latitude, ...rest } = row;
-                  // Make sure latitude and longitude are numbers
-                  const longitudeNum = parseFloat(longitude);
-                  const latitudeNum = parseFloat(latitude);
-
-                  if (isNaN(longitudeNum) || isNaN(latitudeNum)) {
-                    // Skip invalid rows or handle as needed
-                    return;
-                  }
-
-                  const geoJsonFeature: GeoJSONFeature = {
-                    type: "Feature",
-                    geometry: {
-                      type: "Point",
-                      coordinates: [longitudeNum, latitudeNum],
-                    },
-                    properties: {
-                      query: row.query,
-                      name: row.name,
-                      address: row.full_address,
-                      phone: row.phone,
-                      site: row.site,
-                      pointType: "competitor",
-                      ...rest,
-                    },
-                  };
-
-                  tempObj.features.push(geoJsonFeature);
-                }
-              });
-
-              resolve(tempObj);
-            } catch (err) {
-              reject(err);
-            }
-          },
-          error: (err: any) => {
-            reject(err);
-          },
-        });
-      });
-    });
+  return fetchGeoJSON("/competition_data.geojson");
 };
 
 export const readCommercialLandData = (): Promise<GeoJSONFeatureCollection> => {
-  return fetch("/commercial_land.csv")
-    .then((response) => response.text())
-    .then((csvText) => {
-      return new Promise<GeoJSONFeatureCollection>((resolve, reject) => {
-        Papa.parse(csvText, {
-          header: true,
-          skipEmptyLines: true,
-          complete: (results) => {
-            try {
-              const tempObj: GeoJSONFeatureCollection = {
-                type: "FeatureCollection",
-                features: [],
-              };
-
-              results.data.forEach((row: any) => {
-                // Make sure latitude and longitude are numbers
-                const longitude = parseFloat(row.longitude);
-                const latitude = parseFloat(row.latitude);
-
-                if (isNaN(longitude) || isNaN(latitude)) {
-                  // Skip invalid rows or handle as needed
-                  return;
-                }
-
-                const geoJsonFeature: GeoJSONFeature = {
-                  type: "Feature",
-                  geometry: {
-                    type: "Point",
-                    coordinates: [latitude, longitude],
-                  },
-                  properties: {
-                    outcode: row.outcode,
-                    pageTitle: row.pageTitle,
-                    pricePerSqFt: row.pricePerSqFt,
-                    price_1: row.price_1,
-                    price_2: row.price_2,
-                    property: row.property,
-                    propertySubType: row.propertySubType,
-                    sector: row.sector,
-                    size: row.size,
-                    type: row.type,
-                    ukCountry: row.ukCountry,
-                    url: row.url,
-                    id: row.id,
-                    pointType: "commercial",
-                  },
-                };
-
-                tempObj.features.push(geoJsonFeature);
-              });
-              resolve(tempObj);
-            } catch (err) {
-              reject(err);
-            }
-          },
-          error: (err: any) => {
-            reject(err);
-          },
-        });
-      });
-    });
-};
-
-export const readPopulationData = (): Promise<GeoJSONFeatureCollection> => {
-  return fetch("/postcode_to_bua_mapped.csv")
-    .then((response) => response.text())
-    .then((csvText) => {
-      return new Promise<GeoJSONFeatureCollection>((resolve, reject) => {
-        const tempObj: GeoJSONFeatureCollection = {
-          type: "FeatureCollection",
-          features: [],
-        };
-
-        Papa.parse(csvText, {
-          header: true,
-          skipEmptyLines: true,
-          step: (result) => {
-            const row: any = result.data;
-            const { Latitude, Longitude, ...rest } = row;
-            const longitude = parseFloat(Longitude);
-            const latitude = parseFloat(Latitude);
-
-            if (isNaN(longitude) || isNaN(latitude)) return;
-
-            const geoJsonFeature: GeoJSONFeature = {
-              type: "Feature",
-              geometry: {
-                type: "Point",
-                coordinates: [longitude, latitude], // Fix: [lon, lat] is correct GeoJSON order
-              },
-              properties: {
-                pointType: "population",
-                ...rest,
-              },
-            };
-
-            tempObj.features.push(geoJsonFeature);
-          },
-          complete: () => {
-            resolve(tempObj);
-          },
-          error: (err: any) => {
-            reject(err);
-          },
-        });
-      });
-    });
+  return fetchGeoJSON("/commercial_land.geojson");
 };
 
 export const readTrafficData = (): Promise<GeoJSONFeatureCollection> => {
-  return fetch("/traffic_data.csv")
-    .then((response) => response.text())
-    .then((csvText) => {
-      return new Promise<GeoJSONFeatureCollection>((resolve, reject) => {
-        Papa.parse(csvText, {
-          header: true,
-          skipEmptyLines: true,
-          complete: (results) => {
-            try {
-              const tempObj: GeoJSONFeatureCollection = {
-                type: "FeatureCollection",
-                features: [],
-              };
-
-              results.data.forEach((row: any) => {
-                // Make sure latitude and longitude are numbers
-                const longitude = parseFloat(row.longitude);
-                const latitude = parseFloat(row.latitude);
-
-                if (isNaN(longitude) || isNaN(latitude)) {
-                  // Skip invalid rows or handle as needed
-                  return;
-                }
-
-                const geoJsonFeature: GeoJSONFeature = {
-                  type: "Feature",
-                  geometry: {
-                    type: "Point",
-                    coordinates: [longitude, latitude],
-                  },
-                  properties: {
-                    pointType: "traffic",
-                    year: parseInt(row.year, 10),
-                    all_motor_vehicles:
-                      parseInt(row.all_motor_vehicles, 10) || 0,
-                  },
-                };
-
-                tempObj.features.push(geoJsonFeature);
-              });
-              resolve(tempObj);
-            } catch (err) {
-              reject(err);
-            }
-          },
-          error: (err: any) => {
-            reject(err);
-          },
-        });
-      });
-    });
+  return fetchGeoJSON("/traffic_data.geojson");
 };
 
+/**
+ * Loads and filters population data from pre-processed GeoJSON chunks
+ * based on the visible map bounds.
+ * @param minLng The minimum longitude of the map bounds.
+ * @param minLat The minimum latitude of the map bounds.
+ * @param maxLng The maximum longitude of the map bounds.
+ * @param maxLat The maximum latitude of the map bounds.
+ * @returns A GeoJSONFeatureCollection containing only the features within the bounds.
+ */
 export async function loadVisiblePopulation(
   minLng: number,
   minLat: number,
   maxLng: number,
   maxLat: number
-) {
-  const features: GeoJSONFeature[] = [];
-  const totalChunks = 18; // adjust to match your number of CSV files
+): Promise<GeoJSONFeatureCollection> {
+  const allFeatures: GeoJSONFeature[] = [];
+  const totalChunks = 18; // This should match the number of chunk files
 
   for (let i = 1; i <= totalChunks; i++) {
-    const url = `/chunks/chunk_${i}.csv`;
+    const url = `/chunks/chunk_${i}.geojson`;
     try {
-      const response = await fetch(url);
-      const text = await response.text();
-
-      await new Promise((resolve, reject) => {
-        Papa.parse(text, {
-          header: true,
-          skipEmptyLines: true,
-          step: (result: any) => {
-            const { Latitude, Longitude, BUA_Population, ...rest } =
-              result.data;
-            const lat = parseFloat(Latitude);
-            const lng = parseFloat(Longitude);
-            if (
-              isNaN(lat) ||
-              isNaN(lng) ||
-              lng < minLng ||
-              lng > maxLng ||
-              lat < minLat ||
-              lat > maxLat
-            )
-              return;
-
-            features.push({
-              type: "Feature",
-              geometry: { type: "Point", coordinates: [lng, lat] },
-              properties: {
-                ...rest,
-                BUA_Population: parseInt(BUA_Population, 10) || 0,
-              },
-            });
-          },
-          complete: resolve,
-          error: reject,
-        });
+      // Fetch the pre-processed GeoJSON chunk
+      const chunkCollection = await fetchGeoJSON(url);
+      
+      // Filter features within the current map bounds
+      const visibleFeatures = chunkCollection.features.filter(feature => {
+        const [lng, lat] = feature.geometry.coordinates;
+        return lng >= minLng && lng <= maxLng && lat >= minLat && lat <= maxLat;
       });
+
+      allFeatures.push(...visibleFeatures);
+
     } catch (e) {
-      console.error(`Error loading ${url}:`, e);
+      // It's possible a chunk doesn't exist, so we can log and continue
+      console.warn(`Could not load or process ${url}:`, e);
     }
   }
 
-  return { type: "FeatureCollection", features };
+  return { type: "FeatureCollection", features: allFeatures };
 }

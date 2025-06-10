@@ -31,3 +31,7 @@ traffic_data.csv
 chunks/
 population.geojson
 postcode_to_bua_mapped.csv
+
+.env
+
+*.geojson

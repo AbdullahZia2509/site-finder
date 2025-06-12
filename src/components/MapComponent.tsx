@@ -250,10 +250,10 @@ export default function MapComponent({
                   type: "exponential",
                   stops: [
                     [0, 0], // Population 0 has 0 weight
-                    [50, 0.2], // Population 50 has 0.2 weight
-                    [200, 0.5], // Population 200 has 0.5 weight
-                    [1000, 0.8], // Population 1000 has 0.8 weight
-                    [5000, 1], // Population 5000+ has full weight
+                    [500, 0.2], // Population 50 has 0.2 weight
+                    [1000, 0.5], // Population 200 has 0.5 weight
+                    [5000, 0.8], // Population 1000 has 0.8 weight
+                    [10000, 1], // Population 5000+ has full weight
                   ],
                 },
                 "heatmap-intensity": {
@@ -531,9 +531,9 @@ export default function MapComponent({
 
     // Rating and Reviews
     if (props.rating) {
-      popupHTML += `<p class="popup-rating"><strong>Rating:</strong> ${
-        props.rating
-      }${props.reviews ? ` (${props.reviews} reviews)` : ""}</p>`;
+      const ratingText = props.rating;
+      const reviewsText = props.reviews ? ` (${props.reviews} reviews)` : "";
+      popupHTML += `<p class="popup-rating"><strong>Rating:</strong> ${ratingText}${reviewsText}</p>`;
     }
 
     // Description
@@ -541,19 +541,32 @@ export default function MapComponent({
       popupHTML += `<p class="popup-description"><strong>Description:</strong><br/>${props.description}</p>`;
     }
 
-    // Photo
-    if (props.photo) {
-      popupHTML += `<div class="popup-photo-container"><img src="${props.photo}" alt="${title}" style="width:100%;max-height:150px;object-fit:cover;border-radius:4px;" crossorigin="anonymous"/></div>`;
+    // Image for Popup - Check both photo and images/0 properties
+    const imageUrl = props.photo?.trim() || (props as any)["images/0"]?.trim();
+    if (imageUrl) {
+      popupHTML += `
+        <div class="popup-photo-container" style="margin: 10px 0;">
+          <img 
+            src="${imageUrl}" 
+            alt="Location Image" 
+            style="width: 100%; max-height: 200px; object-fit: cover; border-radius: 4px; border: 1px solid #eee;"
+            crossOrigin="anonymous"
+            onError="this.style.display='none'"
+          />
+        </div>
+      `;
     }
 
     // Additional Details Section
     popupHTML += `<div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee;"><h4 style="margin: 0; padding: 0;">Additional Details:</h4><ul style="list-style: none; padding-left: 0; font-size: 12px;">`;
 
-    const detailsToShow: {
+    type DetailItem = {
       label: string;
       key: keyof GeoJSONFeature["properties"];
       isUrl?: boolean;
-    }[] = [
+    };
+
+    const detailsToShow: DetailItem[] = [
       { label: "Property Type", key: "property" },
       { label: "Sub-Type", key: "propertySubType" },
       { label: "Sector", key: "sector" },

@@ -10,7 +10,7 @@ import "dotenv/config"; // Load environment variables from .env file
 // Make sure you have copied .env.example to .env and filled in your details.
 const { AWS_REGION, S3_BUCKET_NAME } = process.env;
 
-const competitionCsvPath = path.join("public", "competition_data.csv");
+const commercialCsvPath = path.join("public", "commercial_land.csv");
 
 // --- SCRIPT LOGIC ---
 
@@ -48,7 +48,7 @@ async function downloadImage(url) {
  */
 async function uploadToS3(buffer, originalUrl, contentType) {
   // Create a unique file name from the original URL's path
-  const fileName = `competition-photos/${path.basename(
+  const fileName = `commercial-land-images/${path.basename(
     new URL(originalUrl).pathname
   )}.jpg`;
 
@@ -71,8 +71,8 @@ async function uploadToS3(buffer, originalUrl, contentType) {
 /**
  * Main function to process the CSV file.
  */
-async function processImages() {
-  console.log("Starting image processing...");
+async function processCommercialImages() {
+  console.log("Starting commercial images processing...");
 
   if (
     !S3_BUCKET_NAME ||
@@ -87,7 +87,7 @@ async function processImages() {
   }
 
   // Read the CSV file
-  const csvText = await fsp.readFile(competitionCsvPath, "utf-8");
+  const csvText = await fsp.readFile(commercialCsvPath, "utf-8");
   const { data: rows } = Papa.parse(csvText, {
     header: true,
     skipEmptyLines: true,
@@ -97,40 +97,48 @@ async function processImages() {
   let processedCount = 0;
 
   for (const row of rows) {
-    if (row.photo && row.photo.startsWith("http")) {
-      console.log(`Processing image for: ${row.name || "N/A"}`);
+    // Process only the first image (images/0)
+    const imgKey = 'images/0';
+    const imgUrl = row[imgKey];
 
-      const imageData = await downloadImage(row.photo);
+    if (imgUrl && imgUrl.startsWith("http")) {
+      console.log(`Processing main image for: ${row.pageTitle || "N/A"}`);
+
+      const imageData = await downloadImage(imgUrl);
 
       if (imageData) {
         const s3Url = await uploadToS3(
           imageData.buffer,
-          row.photo,
+          imgUrl,
           imageData.contentType
         );
 
         if (s3Url) {
+          // Store the URL in both the photo field and images/0
           row.photo = s3Url;
+          row[imgKey] = s3Url;
           console.log(`  -> Successfully uploaded to: ${s3Url}`);
           processedCount++;
         }
       }
     }
+
     updatedRows.push(row);
   }
 
   // Write the updated data back to the CSV file
   const updatedCsv = Papa.unparse(updatedRows, { header: true });
-  await fsp.writeFile(competitionCsvPath, updatedCsv);
+  await fsp.writeFile(commercialCsvPath, updatedCsv);
 
   console.log(
-    `\nImage processing finished. Successfully processed and uploaded ${processedCount} images.`
+    `\nCommercial images processing finished. Successfully processed and uploaded ${processedCount} images.`
   );
   console.log(
-    `The file '${competitionCsvPath}' has been updated with the new S3 URLs.`
+    `The file '${commercialCsvPath}' has been updated with the new S3 URLs.`
   );
 }
 
-processImages().catch((error) => {
+// Run the script
+processCommercialImages().catch((error) => {
   console.error("An unexpected error occurred:", error);
 });

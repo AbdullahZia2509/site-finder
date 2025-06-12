@@ -398,3 +398,9 @@ a:hover {
 .mapboxgl-popup-content {
   padding: 0 !important; /* Override any existing padding */
 }
+
+.mapboxgl-popup-content .custom-popup-content {
+  max-height: 400px; /* Adjust this value to your desired maximum height in pixels */
+  overflow-y: auto; /* Adds a vertical scrollbar if content overflows */
+  padding-right: 10px; /* Optional: Adds some padding to the right to prevent scrollbar from touching text */
+}

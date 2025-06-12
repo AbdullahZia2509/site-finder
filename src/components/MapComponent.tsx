@@ -533,7 +533,7 @@ export default function MapComponent({
     if (props.rating) {
       const ratingText = props.rating;
       const reviewsText = props.reviews ? ` (${props.reviews} reviews)` : "";
-      popupHTML += `<p class="popup-rating"><strong>Rating:</strong> ${ratingText}${reviewsText}</p>`;
+      popupHTML += `<p class="popup-rating"><strong>Rating:</strong> ${ratingText}/5.0${reviewsText}</p>`;
     }
 
     // Description

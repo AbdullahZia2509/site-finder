@@ -1,0 +1,12 @@
+{
+  "tilejson": "2.2.0",
+  "name": "Postcode to BUA",
+  "description": "Postcode to Built-up Area mapping",
+  "version": "1.0.0",
+  "scheme": "xyz",
+  "tiles": [
+    "http://localhost:3001/vector-tiles/postcode-to-bua/{z}/{x}/{y}.pbf"
+  ],
+  "minzoom": 0,
+  "maxzoom": 14
+}

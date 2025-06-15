@@ -1,0 +1,16 @@
+node_modules
+.git
+.gitignore
+.DS_Store
+.env
+*.log
+dist
+build
+.idea
+.vscode
+*.md
+*.mdx
+*.tsbuildinfo
+*.test.*
+*.spec.*
+coverage

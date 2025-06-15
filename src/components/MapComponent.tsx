@@ -4,13 +4,13 @@ import { useRef, useEffect, useState, useCallback } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import {
-  loadVisiblePopulation,
+  loadVisiblePopulation, // We will no longer need this for the heatmap
   readCommercialLandData,
   readCompetitionsData,
   type GeoJSONFeature,
 } from "./CSVReader";
 import * as turf from "@turf/turf";
-import { booleanPointInPolygon } from "@turf/turf"; // Attempt different import style
+import { booleanPointInPolygon } from "@turf/turf";
 import MapboxGeocoder from "@mapbox/mapbox-gl-geocoder";
 import "@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css";
 
@@ -37,20 +37,6 @@ export default function MapComponent({
   const [mapLoaded, setMapLoaded] = useState(false);
   const [showTrafficLayer, setShowTrafficLayer] = useState(true);
   const [showPopulationHeatmap, setShowPopulationHeatmap] = useState(true);
-
-  function debounce<F extends (...args: any[]) => void>(
-    func: F,
-    waitFor: number
-  ) {
-    let timeout: ReturnType<typeof setTimeout> | null = null;
-
-    return (...args: Parameters<F>): void => {
-      if (timeout !== null) {
-        clearTimeout(timeout);
-      }
-      timeout = setTimeout(() => func(...args), waitFor);
-    };
-  }
 
   // Effect for initial Mapbox GL JS map setup
   useEffect(() => {
@@ -93,11 +79,142 @@ export default function MapComponent({
     };
   }, []);
 
-  // Effect for fetching data and adding all layers to the map
+  // Add vector tile layer for postcode data and population heatmap
   useEffect(() => {
     if (!mapLoaded || !mapRef.current) return;
 
     const map = mapRef.current;
+
+    // Add the vector tile source (if not already added by previous logic)
+    if (!map.getSource("postcode-tiles")) {
+      map.addSource("postcode-tiles", {
+        type: "vector",
+        url: "http://localhost:3001/vector-tiles/postcode_to_bua_mapped.json",
+      });
+    }
+
+    // Add the postcode points layer (if not already added)
+    if (!map.getLayer("postcode-points")) {
+      map.addLayer({
+        id: "postcode-points",
+        type: "circle",
+        source: "postcode-tiles",
+        "source-layer": "postcode_to_bua_mapped",
+        paint: {
+          "circle-radius": 4,
+          "circle-color": "#007cbf",
+          "circle-opacity": 0.8,
+          "circle-stroke-width": 1,
+          "circle-stroke-color": "#fff",
+        },
+        minzoom: 0,
+        maxzoom: 24,
+        layout: {
+          visibility: showPopulationHeatmap ? "none" : "visible", // Hide points if heatmap is on, or make it toggleable
+        },
+      });
+
+      // Add popup on click for postcode points
+      map.on("click", "postcode-points", (e) => {
+        if (!e.features) return;
+
+        const feature = e.features[0];
+        const coordinates = feature.geometry.coordinates.slice();
+        const properties = feature.properties || {};
+
+        while (Math.abs(e.lngLat.lng - coordinates[0]) > 180) {
+          coordinates[0] += e.lngLat.lng > coordinates[0] ? 360 : -360;
+        }
+
+        new mapboxgl.Popup()
+          .setLngLat(coordinates as [number, number])
+          .setHTML(
+            `
+            <div>
+              <strong>Postcode:</strong> ${properties.postcode || "N/A"}<br>
+              <strong>BUA Name:</strong> ${properties.bua_name || "N/A"}<br>
+              <strong>Population:</strong> ${properties.population || "N/A"}
+            </div>
+          `
+          )
+          .addTo(map);
+      });
+
+      // Change cursor on hover for postcode points
+      map.on("mouseenter", "postcode-points", () => {
+        if (map) map.getCanvas().style.cursor = "pointer";
+      });
+
+      map.on("mouseleave", "postcode-points", () => {
+        if (map) map.getCanvas().style.cursor = "";
+      });
+    }
+
+    // Add the population heatmap layer, sourced from the same vector tiles
+    if (!map.getLayer("population-heatmap")) {
+      map.addLayer(
+        {
+          id: "population-heatmap",
+          type: "heatmap",
+          source: "postcode-tiles", // Source from your existing vector tiles
+          "source-layer": "postcode_to_bua_mapped", // Use the correct source layer
+          maxzoom: 15,
+          paint: {
+            "heatmap-weight": {
+              property: "population_count", // Assuming your population field is named 'population_count' in the vector tiles
+              type: "exponential",
+              stops: [
+                [0, 0], // Population 0 has 0 weight
+                [500, 0.2], // Population 500 has 0.2 weight
+                [1000, 0.5], // Population 1000 has 0.5 weight
+                [5000, 0.8], // Population 5000 has 0.8 weight
+                [10000, 1], // Population 10000+ has full weight
+              ],
+            },
+            "heatmap-intensity": {
+              stops: [
+                [11, 1],
+                [15, 3],
+              ],
+            },
+            "heatmap-color": [
+              "interpolate",
+              ["linear"],
+              ["heatmap-density"],
+              0,
+              "rgba(0, 0, 255, 0)", // Transparent Blue for 0 density
+              0.1,
+              "royalblue", // Royal Blue for low density
+              0.3,
+              "cyan", // Cyan for medium-low density
+              0.5,
+              "lime", // Lime Green for medium density
+              0.7,
+              "yellow", // Yellow for medium-high density
+              1,
+              "red", // Red for high density
+            ],
+            "heatmap-radius": {
+              stops: [
+                [11, 15],
+                [15, 20],
+              ],
+            },
+            "heatmap-opacity": {
+              default: 1,
+              stops: [
+                [14, 1],
+                [15, 0],
+              ],
+            },
+          },
+          layout: {
+            visibility: showPopulationHeatmap ? "visible" : "none", // Controlled by state
+          },
+        },
+        "waterway-label"
+      );
+    }
 
     const getDataAndAddLayers = async () => {
       try {
@@ -205,134 +322,15 @@ export default function MapComponent({
 
         if (map.getLayer("locations")) map.removeLayer("locations");
         if (map.getSource("locations")) map.removeSource("locations");
-      }
-    };
-  }, [mapLoaded]);
 
-  useEffect(() => {
-    if (!mapLoaded || !mapRef.current) return;
-    const map = mapRef.current;
-
-    const updatePopulationDataAndLayers = async () => {
-      console.log("MapComponent: Updating population data for bounds...");
-      const bounds = map.getBounds();
-      if (!bounds) {
-        console.warn("MapComponent: Map bounds not available for data update.");
-        return;
-      }
-
-      try {
-        const newPopulationData = await loadVisiblePopulation(
-          bounds.getWest(),
-          bounds.getSouth(),
-          bounds.getEast(),
-          bounds.getNorth()
-        );
-
-        const source = map.getSource("population") as mapboxgl.GeoJSONSource;
-        if (source) {
-          source.setData(newPopulationData as any);
-        } else {
-          map.addSource("population", {
-            type: "geojson",
-            data: newPopulationData as any,
-          });
-
-          map.addLayer(
-            {
-              id: "population-heatmap",
-              type: "heatmap",
-              source: "population",
-              maxzoom: 15,
-              paint: {
-                "heatmap-weight": {
-                  property: "population_count",
-                  type: "exponential",
-                  stops: [
-                    [0, 0], // Population 0 has 0 weight
-                    [500, 0.2], // Population 50 has 0.2 weight
-                    [1000, 0.5], // Population 200 has 0.5 weight
-                    [5000, 0.8], // Population 1000 has 0.8 weight
-                    [10000, 1], // Population 5000+ has full weight
-                  ],
-                },
-                "heatmap-intensity": {
-                  stops: [
-                    [11, 1],
-                    [15, 3],
-                  ],
-                },
-                "heatmap-color": [
-                  "interpolate",
-                  ["linear"],
-                  ["heatmap-density"],
-                  0,
-                  "rgba(0, 0, 255, 0)", // Transparent Blue for 0 density
-                  0.1,
-                  "royalblue", // Royal Blue for low density
-                  0.3,
-                  "cyan", // Cyan for medium-low density
-                  0.5,
-                  "lime", // Lime Green for medium density
-                  0.7,
-                  "yellow", // Yellow for medium-high density
-                  1,
-                  "red", // Red for high density
-                ],
-                "heatmap-radius": {
-                  stops: [
-                    [11, 15],
-                    [15, 20],
-                  ],
-                },
-                "heatmap-opacity": {
-                  default: 1,
-                  stops: [
-                    [14, 1],
-                    [15, 0],
-                  ],
-                },
-              },
-            },
-            "waterway-label"
-          );
-
-          map.addLayer({
-            id: "population-points",
-            type: "circle",
-            source: "population",
-            minzoom: 14,
-            paint: {
-              "circle-radius": 3,
-              "circle-color": "#00CC00",
-              "circle-opacity": 0.6,
-            },
-          });
-        }
-        console.log("MapComponent: Population data updated.");
-      } catch (error) {
-        console.error("MapComponent: Error updating population data:", error);
-      }
-    };
-
-    const debouncedUpdate = debounce(updatePopulationDataAndLayers, 500);
-
-    updatePopulationDataAndLayers();
-
-    map.on("moveend", debouncedUpdate);
-
-    return () => {
-      const map = mapRef.current;
-      if (map) {
+        // Clean up population heatmap layer if it was added
         if (map.getLayer("population-heatmap"))
           map.removeLayer("population-heatmap");
-        if (map.getLayer("population-points"))
-          map.removeLayer("population-points");
-        if (map.getSource("population")) map.removeSource("population");
       }
     };
-  }, [mapLoaded]);
+  }, [mapLoaded, showPopulationHeatmap]); // Added showPopulationHeatmap to dependency array
 
+  // Visibility toggle for commercial layer
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
     const map = mapRef.current;
@@ -345,6 +343,7 @@ export default function MapComponent({
     }
   }, [showCommercialLayer, mapLoaded]);
 
+  // Visibility toggle for locations layer
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
     const map = mapRef.current;
@@ -357,21 +356,25 @@ export default function MapComponent({
     }
   }, [showLocationsLayer, mapLoaded]);
 
+  // Visibility toggle for traffic layer
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
     const map = mapRef.current;
     if (map.getLayer("traffic-line")) {
       map.setLayoutProperty(
-        "traffic-line", // Changed from traffic-heatmap/traffic-point
+        "traffic-line",
         "visibility",
         showTrafficLayer ? "visible" : "none"
       );
     }
   }, [showTrafficLayer, mapLoaded]);
 
+  // Visibility toggle for population heatmap and points
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
     const map = mapRef.current;
+
+    // Toggle heatmap visibility
     if (map.getLayer("population-heatmap")) {
       map.setLayoutProperty(
         "population-heatmap",
@@ -379,11 +382,14 @@ export default function MapComponent({
         showPopulationHeatmap ? "visible" : "none"
       );
     }
-    if (map.getLayer("population-points")) {
+
+    // Toggle postcode points visibility based on heatmap (assuming you don't want both at once)
+    // You can adjust this logic if you want independent control.
+    if (map.getLayer("postcode-points")) {
       map.setLayoutProperty(
-        "population-points",
+        "postcode-points",
         "visibility",
-        showPopulationHeatmap ? "visible" : "none"
+        showPopulationHeatmap ? "none" : "visible"
       );
     }
   }, [showPopulationHeatmap, mapLoaded]);
@@ -420,6 +426,7 @@ export default function MapComponent({
     points = 64
   ): GeoJSON.Feature => {
     const radiusInKm = radiusInMeters / 1000;
+    // Use directly imported turf functions
     const circle = turf.circle(turf.point(center), radiusInKm, {
       steps: points,
     });
@@ -461,12 +468,11 @@ export default function MapComponent({
         ...(showCommercialLayer ? commercialLandData : []),
         ...(showLocationsLayer ? competitionData : []),
       ].filter((point: GeoJSONFeature) => {
-        // Explicitly type point
         try {
-          const pt = turf.point(point.geometry.coordinates); // point.geometry.coordinates is valid due to GeoJSONFeature type
-          const polygonGeoJSON = circleGeoJSON.geometry as GeoJSON.Polygon; // Explicitly type for turf.polygon
+          const pt = turf.point(point.geometry.coordinates);
+          const polygonGeoJSON = circleGeoJSON.geometry as GeoJSON.Polygon;
           const poly = turf.polygon(polygonGeoJSON.coordinates);
-          return booleanPointInPolygon(pt, poly); // Use destructured import
+          return booleanPointInPolygon(pt, poly);
         } catch (error) {
           console.error(
             "Error during commercial/competition point in polygon check:",
@@ -546,9 +552,9 @@ export default function MapComponent({
     if (imageUrl) {
       popupHTML += `
         <div class="popup-photo-container" style="margin: 10px 0;">
-          <img 
-            src="${imageUrl}" 
-            alt="Location Image" 
+          <img
+            src="${imageUrl}"
+            alt="Location Image"
             style="width: 100%; max-height: 200px; object-fit: cover; border-radius: 4px; border: 1px solid #eee;"
             crossOrigin="anonymous"
             onError="this.style.display='none'"
@@ -609,7 +615,6 @@ export default function MapComponent({
       .addTo(mapRef.current!);
   };
 
-  // ... (rest of the code remains the same)
   const flyToStore = (feature: GeoJSONFeature) => {
     mapRef.current?.flyTo({ center: feature.geometry.coordinates, zoom: 15 });
   };
@@ -665,16 +670,15 @@ export default function MapComponent({
             checked={showTrafficLayer}
             onChange={() => setShowTrafficLayer(!showTrafficLayer)}
           />
-          {/* You can keep the old marker or change it to represent lines */}
           <div
             className="legend-marker"
             style={{
-              backgroundColor: "transparent", // No fill for lines
-              borderBottom: "3px solid #ffed01", // Example for moderate traffic line
-              width: "20px", // Make it look like a line segment
+              backgroundColor: "transparent",
+              borderBottom: "3px solid #ffed01",
+              width: "20px",
             }}
           ></div>
-          <span>Traffic (Live Lines)</span> {/* Updated text */}
+          <span>Traffic (Live Lines)</span>
         </div>
         <div className="legend-item">
           <input
@@ -692,8 +696,6 @@ export default function MapComponent({
 
       <div className="selected-points-box">
         <h3>Selected Points ({selectedPoints.length})</h3>
-        {/* Removed display of totalPopulationInCircle */}
-        {/* Removed display of totalTrafficInCircle */}
         <button
           onClick={downloadCSV}
           className="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800"

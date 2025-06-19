@@ -29,14 +29,27 @@ export default function MapComponent({
   const [commercialLandData, setCommercialLandData] = useState<
     GeoJSONFeature[]
   >([]);
-  const [selectedPoints, setSelectedPoints] = useState<GeoJSONFeature[]>([]); // This will now only hold commercial and storage sites
+  const [selectedPoints, setSelectedPoints] = useState<GeoJSONFeature[]>([]);
+  const [selectedCommercialSites, setSelectedCommercialSites] = useState<
+    GeoJSONFeature[]
+  >([]);
+  const [circleCompetitors, setCircleCompetitors] = useState<GeoJSONFeature[]>(
+    []
+  );
+  const [selectedPopulationPoints, setSelectedPopulationPoints] = useState<
+    GeoJSONFeature[]
+  >([]);
+  const [selectedTrafficPoints, setSelectedTrafficPoints] = useState<
+    GeoJSONFeature[]
+  >([]);
   const [drawingCircle, setDrawingCircle] = useState(false);
   const [radius, setRadius] = useState<number>(1000); // in meters
   const [showCommercialLayer, setShowCommercialLayer] = useState(true);
   const [showLocationsLayer, setShowLocationsLayer] = useState(true);
   const [mapLoaded, setMapLoaded] = useState(false);
-  const [showTrafficLayer, setShowTrafficLayer] = useState(true);
+  const [showTrafficHeatmap, setShowTrafficHeatmap] = useState(true);
   const [showPopulationHeatmap, setShowPopulationHeatmap] = useState(true);
+  const [showPopulationPoints, setShowPopulationPoints] = useState(false);
 
   // Effect for initial Mapbox GL JS map setup
   useEffect(() => {
@@ -48,7 +61,6 @@ export default function MapComponent({
       style: "mapbox://styles/mapbox/dark-v11",
       center: INITIAL_CENTER,
       zoom: INITIAL_ZOOM,
-      minZoom: 10.12,
       maxZoom: 14,
     });
 
@@ -93,6 +105,14 @@ export default function MapComponent({
       });
     }
 
+    // Add the traffic data vector tile source
+    if (!map.getSource("traffic-tiles")) {
+      map.addSource("traffic-tiles", {
+        type: "vector",
+        url: "http://localhost:3001/vector-tiles/traffic.json",
+      });
+    }
+
     // Add the postcode points layer (if not already added)
     if (!map.getLayer("postcode-points")) {
       map.addLayer({
@@ -110,7 +130,7 @@ export default function MapComponent({
         minzoom: 0,
         maxzoom: 24,
         layout: {
-          visibility: showPopulationHeatmap ? "none" : "visible", // Hide points if heatmap is on, or make it toggleable
+          visibility: showPopulationPoints ? "visible" : "none", // Toggle based on population points checkbox
         },
       });
 
@@ -171,12 +191,15 @@ export default function MapComponent({
                 [10000, 1], // Population 10000+ has full weight
               ],
             },
-            "heatmap-intensity": {
-              stops: [
-                [11, 1],
-                [15, 3],
-              ],
-            },
+            "heatmap-intensity": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              11,
+              1,
+              15,
+              3,
+            ],
             "heatmap-color": [
               "interpolate",
               ["linear"],
@@ -194,25 +217,88 @@ export default function MapComponent({
               1,
               "red", // Red for high density
             ],
-            "heatmap-radius": {
-              stops: [
-                [11, 15],
-                [15, 20],
-              ],
-            },
-            "heatmap-opacity": {
-              default: 1,
-              stops: [
-                [14, 1],
-                [15, 0],
-              ],
-            },
+            "heatmap-radius": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              11,
+              15,
+              15,
+              20,
+            ],
+            "heatmap-opacity": 0.8,
           },
           layout: {
             visibility: showPopulationHeatmap ? "visible" : "none", // Controlled by state
           },
         },
-        "waterway-label"
+        "waterway-label" // Place the layer below labels
+      );
+    }
+
+    // Add the traffic heatmap layer
+    if (!map.getLayer("traffic-heatmap")) {
+      map.addLayer(
+        {
+          id: "traffic-heatmap",
+          type: "heatmap",
+          source: "traffic-tiles", // Source from traffic vector tiles
+          "source-layer": "traffic_data", // Use the correct source layer name
+          maxzoom: 15,
+          paint: {
+            "heatmap-weight": {
+              property: "all_motor_vehicles", // Use the traffic count field
+              type: "exponential",
+              stops: [
+                [0, 0], // No traffic has 0 weight
+                [1000, 0.2], // Low traffic
+                [5000, 0.5], // Medium traffic
+                [10000, 0.8], // High traffic
+                [20000, 1], // Very high traffic
+              ],
+            },
+            "heatmap-intensity": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              11,
+              1,
+              15,
+              3,
+            ],
+            "heatmap-color": [
+              "interpolate",
+              ["linear"],
+              ["heatmap-density"],
+              0,
+              "rgba(0, 255, 0, 0)", // Transparent Green for 0 density
+              0.1,
+              "green", // Green for low density
+              0.3,
+              "yellow", // Yellow for medium-low density
+              0.5,
+              "orange", // Orange for medium density
+              0.7,
+              "orangered", // Orange-Red for medium-high density
+              1,
+              "red", // Red for high density
+            ],
+            "heatmap-radius": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              11,
+              15,
+              15,
+              20,
+            ],
+            "heatmap-opacity": 0.8,
+          },
+          layout: {
+            visibility: showTrafficHeatmap ? "visible" : "none",
+          },
+        },
+        "waterway-label" // Place the layer below labels
       );
     }
 
@@ -227,53 +313,6 @@ export default function MapComponent({
         setCompetitionData(competitions.features);
         setCommercialLandData(commercials.features);
 
-        if (!map.getSource("mapbox-traffic-data")) {
-          map.addSource("mapbox-traffic-data", {
-            type: "vector",
-            url: "mapbox://mapbox.mapbox-traffic-v1", // Mapbox's official traffic tileset
-          });
-        }
-
-        if (!map.getLayer("traffic-line")) {
-          map.addLayer(
-            {
-              id: "traffic-line",
-              type: "line",
-              source: "mapbox-traffic-data",
-              "source-layer": "traffic", // The source-layer name for Mapbox traffic data
-              paint: {
-                "line-width": {
-                  base: 1.5,
-                  stops: [
-                    [10, 1.5],
-                    [14, 3],
-                    [18, 5],
-                  ],
-                },
-                "line-color": [
-                  "match",
-                  ["get", "congestion"],
-                  "low",
-                  "#3bb2d0", // Light blue for low traffic
-                  "moderate",
-                  "#ffed01", // Yellow for moderate
-                  "heavy",
-                  "#ff8c1a", // Orange for heavy
-                  "severe",
-                  "#ff0000", // Red for severe
-                  "#cccccc", // Default for unknown
-                ],
-                "line-opacity": 0.8,
-              },
-              filter: ["==", "$type", "LineString"], // Ensure it only renders line features
-              layout: {
-                visibility: showTrafficLayer ? "visible" : "none",
-              },
-            },
-            "waterway-label"
-          ); // Place it below waterway labels for better visibility
-        }
-
         if (!map.getSource("commercial")) {
           map.addSource("commercial", { type: "geojson", data: commercials });
         }
@@ -286,6 +325,15 @@ export default function MapComponent({
             layout: {
               visibility: showCommercialLayer ? "visible" : "none",
             },
+          });
+
+          // Change cursor on hover for commercial points
+          map.on("mouseenter", "commercial", () => {
+            if (map) map.getCanvas().style.cursor = "pointer";
+          });
+
+          map.on("mouseleave", "commercial", () => {
+            if (map) map.getCanvas().style.cursor = "";
           });
         }
 
@@ -302,6 +350,15 @@ export default function MapComponent({
               visibility: showLocationsLayer ? "visible" : "none",
             },
           });
+
+          // Change cursor on hover for competitor points
+          map.on("mouseenter", "locations", () => {
+            if (map) map.getCanvas().style.cursor = "pointer";
+          });
+
+          map.on("mouseleave", "locations", () => {
+            if (map) map.getCanvas().style.cursor = "";
+          });
         }
       } catch (error) {
         console.error("Failed to load map data or add layers:", error);
@@ -313,10 +370,6 @@ export default function MapComponent({
     return () => {
       const map = mapRef.current;
       if (map) {
-        if (map.getLayer("traffic-line")) map.removeLayer("traffic-line");
-        if (map.getSource("mapbox-traffic-data"))
-          map.removeSource("mapbox-traffic-data");
-
         if (map.getLayer("commercial")) map.removeLayer("commercial");
         if (map.getSource("commercial")) map.removeSource("commercial");
 
@@ -326,6 +379,9 @@ export default function MapComponent({
         // Clean up population heatmap layer if it was added
         if (map.getLayer("population-heatmap"))
           map.removeLayer("population-heatmap");
+
+        // Clean up traffic heatmap layer if it was added
+        if (map.getLayer("traffic-heatmap")) map.removeLayer("traffic-heatmap");
       }
     };
   }, [mapLoaded, showPopulationHeatmap]); // Added showPopulationHeatmap to dependency array
@@ -356,25 +412,26 @@ export default function MapComponent({
     }
   }, [showLocationsLayer, mapLoaded]);
 
-  // Visibility toggle for traffic layer
+  // Visibility toggle for traffic heatmap layer
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
     const map = mapRef.current;
-    if (map.getLayer("traffic-line")) {
+    if (map.getLayer("traffic-heatmap")) {
       map.setLayoutProperty(
-        "traffic-line",
+        "traffic-heatmap",
         "visibility",
-        showTrafficLayer ? "visible" : "none"
+        showTrafficHeatmap ? "visible" : "none"
       );
     }
-  }, [showTrafficLayer, mapLoaded]);
+  }, [showTrafficHeatmap, mapLoaded]);
 
-  // Visibility toggle for population heatmap and points
+  // Effect for toggling the population heatmap
   useEffect(() => {
-    if (!mapRef.current || !mapLoaded) return;
+    if (!mapLoaded || !mapRef.current) return;
+
     const map = mapRef.current;
 
-    // Toggle heatmap visibility
+    // Toggle the population heatmap layer
     if (map.getLayer("population-heatmap")) {
       map.setLayoutProperty(
         "population-heatmap",
@@ -382,17 +439,23 @@ export default function MapComponent({
         showPopulationHeatmap ? "visible" : "none"
       );
     }
+  }, [mapLoaded, showPopulationHeatmap]);
 
-    // Toggle postcode points visibility based on heatmap (assuming you don't want both at once)
-    // You can adjust this logic if you want independent control.
+  // Effect for toggling the population points
+  useEffect(() => {
+    if (!mapLoaded || !mapRef.current) return;
+
+    const map = mapRef.current;
+
+    // Toggle the postcode points layer
     if (map.getLayer("postcode-points")) {
       map.setLayoutProperty(
         "postcode-points",
         "visibility",
-        showPopulationHeatmap ? "none" : "visible"
+        showPopulationPoints ? "visible" : "none"
       );
     }
-  }, [showPopulationHeatmap, mapLoaded]);
+  }, [showPopulationPoints, mapLoaded]);
 
   // Effect for handling map clicks on locations and commercial layers
   useEffect(() => {
@@ -427,9 +490,7 @@ export default function MapComponent({
   ): GeoJSON.Feature => {
     const radiusInKm = radiusInMeters / 1000;
     // Use directly imported turf functions
-    const circle = turf.circle(turf.point(center), radiusInKm, {
-      steps: points,
-    });
+    const circle = turf.circle(turf.point(center), radiusInKm, points);
     return circle;
   };
 
@@ -463,11 +524,10 @@ export default function MapComponent({
         });
       }
 
-      // Filter and list Commercial and Competition points
-      const visibleCommercialAndCompetitionPoints = [
-        ...(showCommercialLayer ? commercialLandData : []),
-        ...(showLocationsLayer ? competitionData : []),
-      ].filter((point: GeoJSONFeature) => {
+      // Filter commercial sites within the circle
+      const visibleCommercialSites = (
+        showCommercialLayer ? commercialLandData : []
+      ).filter((point: GeoJSONFeature) => {
         try {
           const pt = turf.point(point.geometry.coordinates);
           const polygonGeoJSON = circleGeoJSON.geometry as GeoJSON.Polygon;
@@ -475,13 +535,131 @@ export default function MapComponent({
           return booleanPointInPolygon(pt, poly);
         } catch (error) {
           console.error(
-            "Error during commercial/competition point in polygon check:",
+            "Error during commercial point in polygon check:",
             error
           );
           return false;
         }
       });
+
+      // Filter competitors within the circle
+      const visibleCompetitors = (
+        showLocationsLayer ? competitionData : []
+      ).filter((point: GeoJSONFeature) => {
+        try {
+          const pt = turf.point(point.geometry.coordinates);
+          const polygonGeoJSON = circleGeoJSON.geometry as GeoJSON.Polygon;
+          const poly = turf.polygon(polygonGeoJSON.coordinates);
+          return booleanPointInPolygon(pt, poly);
+        } catch (error) {
+          console.error(
+            "Error during competition point in polygon check:",
+            error
+          );
+          return false;
+        }
+      });
+
+      // Store commercial sites and competitors separately
+      setSelectedCommercialSites(visibleCommercialSites);
+      setCircleCompetitors(visibleCompetitors);
+
+      // Combine for display purposes
+      const visibleCommercialAndCompetitionPoints = [
+        ...visibleCommercialSites,
+        ...visibleCompetitors,
+      ];
+
+      // Filter population points within the circle
+      // Get all population points from the map source
+      const populationPoints: GeoJSONFeature[] = [];
+      if (map.getSource("postcode-tiles")) {
+        // Get features from the postcode-tiles source
+        const features = map.querySourceFeatures("postcode-tiles", {
+          sourceLayer: "postcode_to_bua_mapped",
+        });
+
+        // Convert to GeoJSONFeature format and filter by circle
+        const filteredPopulationPoints = features
+          .map((feature) => {
+            return {
+              type: "Feature",
+              geometry: {
+                type: "Point",
+                coordinates:
+                  feature.geometry.type === "Point"
+                    ? (feature.geometry as any).coordinates
+                    : [0, 0],
+              },
+              properties: {
+                ...feature.properties,
+                pointType: "population",
+              },
+            } as GeoJSONFeature;
+          })
+          .filter((pointFeature) => {
+            try {
+              const pt = turf.point(pointFeature.geometry.coordinates);
+              const polygonGeoJSON = circleGeoJSON.geometry as GeoJSON.Polygon;
+              const poly = turf.polygon(polygonGeoJSON.coordinates);
+              return booleanPointInPolygon(pt, poly);
+            } catch (error) {
+              return false;
+            }
+          });
+
+        populationPoints.push(...filteredPopulationPoints);
+      }
+
+      // Filter traffic points within the circle
+      const trafficPoints: GeoJSONFeature[] = [];
+      if (map.getSource("traffic-tiles")) {
+        // Get features from the traffic-tiles source
+        const trafficFeatures = map.querySourceFeatures("traffic-tiles", {
+          sourceLayer: "traffic_data",
+        });
+
+        // Convert to GeoJSONFeature format and filter by circle
+        const filteredTrafficPoints = trafficFeatures
+          .map((feature) => {
+            return {
+              type: "Feature",
+              geometry: {
+                type: "Point",
+                coordinates:
+                  feature.geometry.type === "Point"
+                    ? (feature.geometry as any).coordinates
+                    : feature.geometry.type === "LineString"
+                    ? // For LineString, use the midpoint of the line
+                      [
+                        (feature.geometry as any).coordinates[0][0],
+                        (feature.geometry as any).coordinates[0][1],
+                      ]
+                    : [0, 0],
+              },
+              properties: {
+                ...feature.properties,
+                pointType: "traffic",
+              },
+            } as GeoJSONFeature;
+          })
+          .filter((pointFeature) => {
+            try {
+              const pt = turf.point(pointFeature.geometry.coordinates);
+              const polygonGeoJSON = circleGeoJSON.geometry as GeoJSON.Polygon;
+              const poly = turf.polygon(polygonGeoJSON.coordinates);
+              return booleanPointInPolygon(pt, poly);
+            } catch (error) {
+              return false;
+            }
+          });
+
+        trafficPoints.push(...filteredTrafficPoints);
+      }
+
       setSelectedPoints(visibleCommercialAndCompetitionPoints);
+      setSelectedPopulationPoints(populationPoints);
+      setSelectedTrafficPoints(trafficPoints);
       setDrawingCircle(false);
       map.off("click", onClick); // Remove click listener after drawing
     };
@@ -500,69 +678,143 @@ export default function MapComponent({
     const title = props.name || props.pageTitle || "Unnamed Location";
     popupHTML += `<h3>${title}</h3>`;
 
-    // Category/Type
-    if (props.category || props.type) {
-      popupHTML += `<p class="popup-category"><strong>Category:</strong>${
-        props.category || props.type
-      }</p>`;
-    }
-
-    // Address: Prefer 'full_address', fallback to 'address'
-    if (props.full_address || props.address) {
-      popupHTML += `<p class="popup-address"><strong>Address:</strong>${
-        props.full_address || props.address
-      }</p>`;
-    }
-
-    // Contact Info
-    if (props.phone) {
-      popupHTML += `<p class="popup-phone"><strong>Phone:</strong> ${props.phone}</p>`;
-    } else if (props.phone_1) {
-      popupHTML += `<p class="popup-phone"><strong>Phone:</strong> ${props.phone_1}</p>`;
-    }
-
-    if (props.site) {
-      let siteUrl = props.site;
-      if (!/^https?:\/\//i.test(siteUrl)) {
-        siteUrl = "https://" + siteUrl;
-      }
-      popupHTML += `<p class="popup-website"><strong>Website:</strong> <a href="${siteUrl}" target="_blank" rel="noopener noreferrer">${props.site}</a></p>`;
-    } else if (props.url) {
-      let siteUrl = props.url;
-      if (!/^https?:\/\//i.test(siteUrl)) {
-        siteUrl = "https://" + siteUrl;
-      }
-      popupHTML += `<p class="popup-website"><strong>Website:</strong> <a href="${siteUrl}" target="_blank" rel="noopener noreferrer">${props.url}</a></p>`;
-    }
-
-    // Rating and Reviews
-    if (props.rating) {
-      const ratingText = props.rating;
-      const reviewsText = props.reviews ? ` (${props.reviews} reviews)` : "";
-      popupHTML += `<p class="popup-rating"><strong>Rating:</strong> ${ratingText}/5.0${reviewsText}</p>`;
-    }
-
-    // Description
-    if (props.description) {
-      popupHTML += `<p class="popup-description"><strong>Description:</strong><br/>${props.description}</p>`;
-    }
+    // Determine if this is a competition or commercial land popup
+    const isCompetition = props.pointType === "competitor";
+    const isCommercialLand = props.pointType === "commercial";
 
     // Image for Popup - Check both photo and images/0 properties
     const imageUrl = props.photo?.trim() || (props as any)["images/0"]?.trim();
     if (imageUrl) {
       popupHTML += `
-        <div class="popup-photo-container" style="margin: 10px 0;">
-          <img
-            src="${imageUrl}"
-            alt="Location Image"
-            style="width: 100%; max-height: 200px; object-fit: cover; border-radius: 4px; border: 1px solid #eee;"
-            crossOrigin="anonymous"
-            onError="this.style.display='none'"
-          />
-        </div>
-      `;
+   <div class="popup-photo-container" style="margin: 10px 0;">
+     <img
+       src="${imageUrl}"
+       alt="Location Image"
+       style="width: 100%; max-height: 200px; object-fit: cover; border-radius: 4px; border: 1px solid #eee;"
+       crossOrigin="anonymous"
+       onError="this.style.display='none'"
+     />
+   </div>
+ `;
     }
 
+    // Add additional details right after image for commercial land
+    if (isCommercialLand) {
+      // Additional Details (Size, Prices) as TL;DR
+      let tldrDetails = "";
+      if (props.size) tldrDetails += `Size: ${props.size} sqft, `;
+      if (props.price_1) tldrDetails += `Price: ${props.price_1}, `;
+      if (props.property) tldrDetails += `Property: ${props.property}, `;
+      if (props.category) tldrDetails += `Category: ${props.category}`;
+
+      if (tldrDetails) {
+        popupHTML += `<p class="popup-tldr"><strong>Details:</strong> ${tldrDetails.replace(
+          /,\s*$/,
+          ""
+        )}</p>`;
+      }
+    }
+
+    if (isCompetition) {
+      // COMPETITION POPUP STRUCTURE
+
+      // Address: Prefer 'full_address', fallback to 'address'
+      if (props.full_address || props.address) {
+        popupHTML += `<p class="popup-address"><strong>Address:</strong>${
+          props.full_address || props.address
+        }</p>`;
+      }
+
+      // Website
+      if (props.site) {
+        let siteUrl = props.site;
+        if (!/^https?:\/\//i.test(siteUrl)) {
+          siteUrl = "https://" + siteUrl;
+        }
+        popupHTML += `<p class="popup-website"><strong>Website:</strong> <a href="${siteUrl}" target="_blank" rel="noopener noreferrer">${props.site}</a></p>`;
+      } else if (props.url) {
+        let siteUrl = props.url;
+        if (!/^https?:\/\//i.test(siteUrl)) {
+          siteUrl = "https://" + siteUrl;
+        }
+        popupHTML += `<p class="popup-website"><strong>Website:</strong> <a href="${siteUrl}" target="_blank" rel="noopener noreferrer">${props.url}</a></p>`;
+      }
+
+      // Contact Info
+      if (props.phone) {
+        popupHTML += `<p class="popup-phone"><strong>Phone:</strong> ${props.phone}</p>`;
+      } else if (props.phone_1) {
+        popupHTML += `<p class="popup-phone"><strong>Phone:</strong> ${props.phone_1}</p>`;
+      }
+
+      // Rating and Reviews
+      if (props.rating) {
+        const ratingText = props.rating;
+        const reviewsText = props.reviews ? ` (${props.reviews} reviews)` : "";
+        popupHTML += `<p class="popup-rating"><strong>Rating:</strong> ${ratingText}/5.0${reviewsText}</p>`;
+      }
+    } else if (isCommercialLand) {
+      // COMMERCIAL LAND POPUP STRUCTURE
+
+      // Web Link
+      if (props.site) {
+        let siteUrl = props.site;
+        if (!/^https?:\/\//i.test(siteUrl)) {
+          siteUrl = "https://" + siteUrl;
+        }
+        popupHTML += `<p class="popup-website"><strong>Website:</strong> <a href="${siteUrl}" target="_blank" rel="noopener noreferrer">${props.site}</a></p>`;
+      } else if (props.url) {
+        let siteUrl = props.url;
+        if (!/^https?:\/\//i.test(siteUrl)) {
+          siteUrl = "https://" + siteUrl;
+        }
+        popupHTML += `<p class="popup-website"><strong>Website:</strong> <a href="${siteUrl}" target="_blank" rel="noopener noreferrer">${props.url}</a></p>`;
+      }
+
+      // Description
+      if (props.description) {
+        popupHTML += `<p class="popup-description"><strong>Description:</strong><br/>${props.description}</p>`;
+      }
+
+      // Address (for misc text)
+      if (props.full_address || props.address) {
+        popupHTML += `<p class="popup-address"><strong>Address:</strong>${
+          props.full_address || props.address
+        }</p>`;
+      }
+    } else {
+      // FALLBACK FOR OTHER TYPES OF POINTS
+
+      // Address: Prefer 'full_address', fallback to 'address'
+      if (props.full_address || props.address) {
+        popupHTML += `<p class="popup-address"><strong>Address:</strong>${
+          props.full_address || props.address
+        }</p>`;
+      }
+
+      // Contact Info
+      if (props.phone) {
+        popupHTML += `<p class="popup-phone"><strong>Phone:</strong> ${props.phone}</p>`;
+      } else if (props.phone_1) {
+        popupHTML += `<p class="popup-phone"><strong>Phone:</strong> ${props.phone_1}</p>`;
+      }
+
+      // Website
+      if (props.site || props.url) {
+        let siteUrl = props.site || props.url;
+        if (!/^https?:\/\//i.test(siteUrl)) {
+          siteUrl = "https://" + siteUrl;
+        }
+        popupHTML += `<p class="popup-website"><strong>Website:</strong> <a href="${siteUrl}" target="_blank" rel="noopener noreferrer">${
+          props.site || props.url
+        }</a></p>`;
+      }
+
+      // Description
+      if (props.description) {
+        popupHTML += `<p class="popup-description"><strong>Description:</strong><br/>${props.description}</p>`;
+      }
+    }
     // Additional Details Section
     popupHTML += `<div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee;"><h4 style="margin: 0; padding: 0;">Additional Details:</h4><ul style="list-style: none; padding-left: 0; font-size: 12px;">`;
 
@@ -619,18 +871,7 @@ export default function MapComponent({
     mapRef.current?.flyTo({ center: feature.geometry.coordinates, zoom: 15 });
   };
 
-  const downloadCSV = () => {
-    const csv = convertToCSV(selectedPoints); // This will only download commercial and storage sites
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", "selected_points.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+  // CSV export is now handled directly in the button click handler
 
   return (
     <>
@@ -664,21 +905,22 @@ export default function MapComponent({
           ></div>
           <span>Storage Sites</span>
         </div>
+
         <div className="legend-item">
           <input
             type="checkbox"
-            checked={showTrafficLayer}
-            onChange={() => setShowTrafficLayer(!showTrafficLayer)}
+            checked={showTrafficHeatmap}
+            onChange={() => setShowTrafficHeatmap(!showTrafficHeatmap)}
           />
           <div
             className="legend-marker"
             style={{
-              backgroundColor: "transparent",
-              borderBottom: "3px solid #ffed01",
+              background:
+                "linear-gradient(to right, green, yellow, orange, red)",
               width: "20px",
             }}
           ></div>
-          <span>Traffic (Live Lines)</span>
+          <span>Traffic Heatmap</span>
         </div>
         <div className="legend-item">
           <input
@@ -688,16 +930,51 @@ export default function MapComponent({
           />
           <div
             className="legend-marker"
-            style={{ backgroundColor: "rgba(0,109,44,0.8)" }}
+            style={{
+              background:
+                "linear-gradient(to right, blue, cyan, lime, yellow, red)",
+              width: "20px",
+            }}
           ></div>
           <span>Population Heatmap</span>
+        </div>
+        <div className="legend-item">
+          <input
+            type="checkbox"
+            checked={showPopulationPoints}
+            onChange={() => setShowPopulationPoints(!showPopulationPoints)}
+          />
+          <div
+            className="legend-marker"
+            style={{ backgroundColor: "#007cbf" }}
+          ></div>
+          <span>Population Points</span>
         </div>
       </div>
 
       <div className="selected-points-box">
         <h3>Selected Points ({selectedPoints.length})</h3>
         <button
-          onClick={downloadCSV}
+          onClick={() => {
+            const csv = convertToCSV(
+              selectedCommercialSites,
+              circleCompetitors,
+              selectedPopulationPoints,
+              selectedTrafficPoints
+            );
+            if (csv) {
+              const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+              const link = document.createElement("a");
+              const url = URL.createObjectURL(blob);
+              link.setAttribute("href", url);
+              link.setAttribute("download", "site-data.csv");
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+            } else {
+              alert("No commercial sites selected to export");
+            }
+          }}
           className="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800"
         >
           Download CSV
@@ -811,35 +1088,242 @@ export default function MapComponent({
   );
 }
 
-function convertToCSV(data: GeoJSONFeature[]): string {
-  if (data.length === 0) return "";
+function convertToCSV(
+  commercialSites: GeoJSONFeature[],
+  competitors: GeoJSONFeature[],
+  populationPoints: GeoJSONFeature[],
+  trafficPoints: GeoJSONFeature[]
+): string {
+  // Only export if there are commercial sites
+  if (commercialSites.length === 0) return "";
 
-  const allKeys = new Set<string>();
-  data.forEach((item) => {
-    Object.keys(item.properties || {}).forEach((key) => allKeys.add(key));
-    if (item.geometry && item.geometry.coordinates) {
-      allKeys.add("longitude");
-      allKeys.add("latitude");
+  // Filter out any features that don't have properties
+  commercialSites = commercialSites.filter(
+    (site) => site.properties && site.properties.id
+  );
+
+  // Define the structure for RightMove (commercial) data columns
+  const rightmoveColumns = [
+    { header: "RIGHTMOVE ID", key: "id" },
+    { header: "features/2 (SIZE)", key: "size" },
+    { header: "price_1 (PRICE)", key: "price_1" },
+    { header: "RIGHTMOVE URL", key: "url" },
+    { header: "brokerDisplayAddress", key: "brokerDisplayAddress" },
+    { header: "brokerDisplayName", key: "brokerDisplayName" },
+    // Note: brokerProfileUrl is not in the GeoJSONFeature properties type
+    // We'll use a fallback property if available
+    { header: "brokerProfileUrl", key: "brokerProfileUrl" },
+  ];
+
+  // Count competitors by category
+  const competitorCategories = new Set<string>();
+  const maxCompetitorsByCategory: { [category: string]: number } = {};
+
+  competitors.forEach((comp) => {
+    const category = comp.properties.category || "Unknown";
+    competitorCategories.add(category);
+    maxCompetitorsByCategory[category] =
+      (maxCompetitorsByCategory[category] || 0) + 1;
+  });
+
+  // Create rows for each commercial site
+  const rows: string[][] = [];
+
+  // Create the header row
+  const headerRow: string[] = [];
+
+  // RIGHTMOVE SITE DATA section
+  headerRow.push("RIGHTMOVE SITE DATA");
+  rightmoveColumns.forEach((col) => {
+    headerRow.push(col.header);
+  });
+
+  // COMPETITOR sections
+  let competitorNum = 1;
+  Array.from(competitorCategories).forEach((category) => {
+    for (let i = 0; i < maxCompetitorsByCategory[category]; i++) {
+      headerRow.push(`COMPETITOR ${competitorNum}`);
+      headerRow.push(`category`);
+      headerRow.push(`name`);
+      headerRow.push(`url`);
+      competitorNum++;
     }
   });
 
-  const headers = Array.from(allKeys).sort();
+  // TRAFFIC DATA section
+  headerRow.push("TRAFFIC DATA");
+  headerRow.push("TOTAL ON THAT POSTCODE");
 
-  const rows = data.map((item) =>
-    headers
-      .map((key) => {
-        let value: any;
-        if (key === "longitude") {
-          value = item.geometry?.coordinates?.[0] ?? "";
-        } else if (key === "latitude") {
-          value = item.geometry?.coordinates?.[1] ?? "";
-        } else {
-          value = (item.properties as any)?.[key] ?? "";
+  // POPULATION DATA
+  headerRow.push("POPULATION DATA");
+  headerRow.push("TOTAL POPULATION");
+
+  // INCOME DATA section (placeholder for future)
+  headerRow.push("INCOME DATA");
+  headerRow.push("INCOME 1", "INCOME 2", "INCOME 3", "INCOME 4");
+
+  // Add header row to rows
+  rows.push(headerRow);
+
+  // Create data rows for each commercial site
+  commercialSites.forEach((site) => {
+    const dataRow: string[] = [];
+
+    // RIGHTMOVE SITE DATA
+    dataRow.push(""); // Section header cell is empty
+
+    // Add RightMove data
+    rightmoveColumns.forEach((col) => {
+      let value = "";
+
+      // Safe property access with type checking
+      const props = site.properties || {};
+
+      if (col.key === "id") {
+        value = String(props.id || "");
+      } else if (col.key === "size") {
+        // Access size directly or use a type assertion for features
+        const anyProps = props as any;
+        value = String(
+          props["features/2"] ||
+            (anyProps.features ? anyProps.features.split(",")[2] : "")
+        );
+      } else if (col.key === "price_1") {
+        value = String(props.price_1 || "");
+      } else if (col.key === "url") {
+        value = String(props.url || "");
+      } else if (col.key === "brokerDisplayAddress") {
+        value = String(props.brokerDisplayAddress || "");
+      } else if (col.key === "brokerDisplayName") {
+        value = String(props.brokerDisplayName || "");
+      } else if (col.key === "brokerProfileUrl") {
+        // Access brokerProfileUrl or brokerUrl with type assertion
+        const anyProps = props as any;
+        value = String(anyProps.brokerProfileUrl || anyProps.brokerUrl || "");
+      }
+
+      dataRow.push(value);
+    });
+
+    // COMPETITOR DATA
+    // For each competitor category and count, add placeholder cells
+    Array.from(competitorCategories).forEach((category) => {
+      for (let i = 0; i < maxCompetitorsByCategory[category]; i++) {
+        dataRow.push(""); // Competitor number
+        dataRow.push(""); // category
+        dataRow.push(""); // name
+        dataRow.push(""); // url
+      }
+    });
+
+    // TRAFFIC DATA
+    dataRow.push(""); // Section header
+
+    // Calculate total traffic count from all traffic points
+    let totalTrafficCount = 0;
+    trafficPoints.forEach((point) => {
+      const trafficCount = point.properties.all_motor_vehicles || 0;
+      totalTrafficCount += Number(trafficCount);
+    });
+
+    dataRow.push(String(totalTrafficCount)); // TOTAL TRAFFIC COUNT
+
+    // POPULATION DATA
+    dataRow.push(""); // Section header
+
+    // Add total population data if available
+    if (populationPoints.length > 0) {
+      // Create a Set to track unique population values
+      const uniquePopulations = new Set<number>();
+
+      // Add all valid population values to the Set
+      populationPoints.forEach((point) => {
+        const population = Number(point.properties.BUA_Population);
+        if (!isNaN(population) && population > 0) {
+          uniquePopulations.add(population);
         }
-        return `"${String(value).replace(/"/g, '""')}"`;
-      })
-      .join(",")
-  );
+      });
 
-  return `${headers.join(",")}\n${rows.join("\n")}`;
+      // Sum the unique population values
+      const totalPopulation = Array.from(uniquePopulations).reduce(
+        (sum, pop) => sum + pop,
+        0
+      );
+
+      // Add the total to the row
+      dataRow.push(String(totalPopulation || 0));
+    } else {
+      // Add placeholder if no population data
+      dataRow.push("0");
+    }
+
+    // INCOME DATA
+    dataRow.push(""); // Section header
+    dataRow.push("", "", "", ""); // INCOME 1-4
+
+    rows.push(dataRow);
+  });
+
+  // Process all competitors and organize them by category
+  const processedCompetitors: { [category: string]: GeoJSONFeature[] } = {};
+
+  // First, sort competitors by category
+  competitors.forEach((comp) => {
+    const category = comp.properties.category || "Unknown";
+    if (!processedCompetitors[category]) {
+      processedCompetitors[category] = [];
+    }
+    processedCompetitors[category].push(comp);
+  });
+
+  // Only process the commercial site rows - no separate rows for competitors
+  if (rows.length > 1) {
+    // For each commercial site row (skipping header row)
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+
+      // Calculate the position to insert competitor data
+      // Start after RightMove data (header + rightmoveColumns)
+      const startPos = 1 + rightmoveColumns.length;
+
+      // Now add all competitors, category by category
+      let competitorPos = startPos;
+      let competitorNum = 1;
+
+      // Process each category
+      Array.from(competitorCategories).forEach((category) => {
+        // Get competitors for this category
+        const categoryCompetitors = processedCompetitors[category] || [];
+
+        // Process each competitor in this category
+        for (let j = 0; j < maxCompetitorsByCategory[category]; j++) {
+          // If we have a competitor at this position, use its data
+          if (j < categoryCompetitors.length) {
+            const comp = categoryCompetitors[j];
+            const name = String(comp.properties.name || "");
+            const url = String(
+              comp.properties.site || comp.properties.url || ""
+            );
+
+            // Update the competitor cells
+            row[competitorPos] = `COMPETITOR ${competitorNum}`;
+            row[competitorPos + 1] = category;
+            row[competitorPos + 2] = name;
+            row[competitorPos + 3] = url;
+          }
+
+          // Move to next competitor position
+          competitorPos += 4;
+          competitorNum++;
+        }
+      });
+    }
+  }
+
+  // Convert rows to CSV format
+  const csvRows = rows.map((row) => {
+    return row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",");
+  });
+
+  return csvRows.join("\n");
 }

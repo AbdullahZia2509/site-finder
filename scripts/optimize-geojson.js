@@ -15,8 +15,9 @@ const VECTOR_TILES_DIR = join(__dirname, "../../public/vector-tiles");
 const FILES_TO_OPTIMIZE = [
   //   'competition_data.geojson',
   //   'commercial_land.geojson',
-  //   'traffic_data.geojson',
-  "postcode_to_bua_mapped.csv", // Replaced population_data.geojson with the CSV file
+  // "traffic_data.geojson",
+  // "postcode_to_bua_mapped.csv", // Replaced population_data.geojson with the CSV file
+  "postcode_with_london_data.csv",
 ];
 
 // Create output directories if they don't exist
@@ -44,9 +45,11 @@ function csvToGeoJSON(csvPath, outputPath) {
     // Read the CSV file
     const csvContent = readFileSync(csvPath, "utf-8");
     const lines = csvContent.split("\n");
-    const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ''));
+    const headers = lines[0]
+      .split(",")
+      .map((h) => h.trim().replace(/^"|"$/g, ""));
 
-    console.log(`Found headers: ${headers.join(', ')}`);
+    console.log(`Found headers: ${headers.join(", ")}`);
     console.log(`First data line: ${lines[1]}`);
 
     // Create GeoJSON features
@@ -67,11 +70,16 @@ function csvToGeoJSON(csvPath, outputPath) {
       }
 
       // Handle quoted CSV values properly
-      const values = lines[i].match(/(?:\"[^\"]*\"|\'[^\']*\'|[^,\s][^,]*[^,\s])(?=\s*,|\s*$)/g) || [];
-      
+      const values =
+        lines[i].match(
+          /(?:\"[^\"]*\"|\'[^\']*\'|[^,\s][^,]*[^,\s])(?=\s*,|\s*$)/g
+        ) || [];
+
       // Clean up values
-      const cleanValues = values.map(v => v.trim().replace(/^["']|["']$/g, ''));
-      
+      const cleanValues = values.map((v) =>
+        v.trim().replace(/^["']|["']$/g, "")
+      );
+
       const properties = {};
       let lng, lat;
 
@@ -94,20 +102,23 @@ function csvToGeoJSON(csvPath, outputPath) {
           type: "Feature",
           geometry: {
             type: "Point",
-            coordinates: [lng, lat]
+            coordinates: [lng, lat],
           },
           properties: {
             ...properties,
-            postcode: properties.Postcode || '',
-            bua_code: properties.BUA_Code || '',
-            bua_name: properties.BUA_Name || '',
-            population: properties.BUA_Population || ''
-          }
+            postcode: properties.Postcode || "",
+            bua_code: properties.BUA_Code || "",
+            bua_name: properties.BUA_Name || "",
+            population: properties.BUA_Population || "",
+          },
         });
-      } else if (lineCount <= 5) { // Log first few parsing issues for debugging
-        console.log(`Skipping line ${i}: Could not parse coordinates. Longitude: ${lng}, Latitude: ${lat}`);
-        console.log(`Headers: ${headers.join(', ')}`);
-        console.log(`Values: ${cleanValues.join(' | ')}`);
+      } else if (lineCount <= 5) {
+        // Log first few parsing issues for debugging
+        console.log(
+          `Skipping line ${i}: Could not parse coordinates. Longitude: ${lng}, Latitude: ${lat}`
+        );
+        console.log(`Headers: ${headers.join(", ")}`);
+        console.log(`Values: ${cleanValues.join(" | ")}`);
       }
     }
 
@@ -214,7 +225,7 @@ async function main() {
     // Process each file
     for (const filename of FILES_TO_OPTIMIZE) {
       const inputPath = join(INPUT_DIR, filename);
-      
+
       console.log(`\nProcessing ${filename}...`);
       console.log(`Input path: ${inputPath}`);
 
@@ -227,7 +238,7 @@ async function main() {
           ? filename.replace(".csv", ".geojson")
           : filename;
         const outputPath = join(OUTPUT_DIR, outputFilename);
-        
+
         console.log(`Output path: ${outputPath}`);
 
         // Create output directory if it doesn't exist

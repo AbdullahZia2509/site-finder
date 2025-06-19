@@ -11,6 +11,10 @@ export type GeoJSONFeature = {
     coordinates: [number, number];
   };
   properties: {
+    "features/2": string;
+    brokerDisplayAddress: string;
+    brokerDisplayName: string;
+    brokerProfileUrl: string;
     query?: string;
     name?: string;
     address?: string;
@@ -52,7 +56,9 @@ const fetchGeoJSON = async (url: string): Promise<GeoJSONFeatureCollection> => {
   const response = await fetch(url);
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}. ${errorText}`);
+    throw new Error(
+      `Failed to fetch ${url}: ${response.status} ${response.statusText}. ${errorText}`
+    );
   }
   return response.json();
 };
@@ -94,15 +100,14 @@ export async function loadVisiblePopulation(
     try {
       // Fetch the pre-processed GeoJSON chunk
       const chunkCollection = await fetchGeoJSON(url);
-      
+
       // Filter features within the current map bounds
-      const visibleFeatures = chunkCollection.features.filter(feature => {
+      const visibleFeatures = chunkCollection.features.filter((feature) => {
         const [lng, lat] = feature.geometry.coordinates;
         return lng >= minLng && lng <= maxLng && lat >= minLat && lat <= maxLat;
       });
 
       allFeatures.push(...visibleFeatures);
-
     } catch (e) {
       // It's possible a chunk doesn't exist, so we can log and continue
       console.warn(`Could not load or process ${url}:`, e);

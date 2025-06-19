@@ -63,6 +63,7 @@ async function openMBTiles(name, filename) {
     await openMBTiles("postcode", "postcode_to_bua_mapped.mbtiles");
     await openMBTiles("competitions", "competition_data.mbtiles");
     await openMBTiles("commercial_land", "commercial_land.mbtiles");
+    await openMBTiles("traffic", "traffic_data.mbtiles");
   } catch (error) {
     console.error("Failed to initialize one or more MBTiles files:", error);
     // Depending on criticality, you might want to exit the process here
@@ -159,6 +160,21 @@ app.get("/vector-tiles/commercial-land.json", (req, res) => {
   res.sendFile(tilesJsonPath);
 });
 
+// Routes for traffic_data tiles and metadata
+app.get("/vector-tiles/traffic/:z/:x/:y.pbf", (req, res) =>
+  handleTileRequest(req, res, "traffic")
+);
+app.get("/vector-tiles/traffic.json", (req, res) => {
+  const tilesJsonPath = path.join(
+    __dirname,
+    "public",
+    "vector-tiles",
+    "traffic_data.json"
+  );
+  console.log("Serving traffic.json from:", tilesJsonPath);
+  res.sendFile(tilesJsonPath);
+});
+
 // Start the server
 app.listen(port, "0.0.0.0", () => {
   console.log(`Tile server running at http://0.0.0.0:${port}`);
@@ -171,5 +187,8 @@ app.listen(port, "0.0.0.0", () => {
   );
   console.log(
     ` - commercial_land.mbtiles: http://0.0.0.0:${port}/vector-tiles/commercial-land/{z}/{x}/{y}.pbf`
+  );
+  console.log(
+    ` - traffic_data.mbtiles: http://0.0.0.0:${port}/vector-tiles/traffic/{z}/{x}/{y}.pbf`
   );
 });

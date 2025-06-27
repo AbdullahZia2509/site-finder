@@ -170,10 +170,10 @@ async function main() {
     console.log("Starting preprocessing...");
 
     await Promise.all([
-      processCompetitionData(),
+      // processCompetitionData(),
       processCommercialLandData(),
-      processTrafficData(),
-      processPopulationChunks(),
+      // processTrafficData(),
+      // processPopulationChunks(),
     ]);
 
     console.log("Preprocessing finished successfully!");

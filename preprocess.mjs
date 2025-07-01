@@ -164,6 +164,53 @@ async function processPopulationChunks() {
   }
 }
 
+// 2. Process income_data.csv
+async function processIncomeData() {
+  const data = await readCsv(path.join(publicDir, "uk_salaries_geocoded.csv"));
+  const features = data
+    .filter((row) => row.longitude && row.latitude)
+    .map((row) => {
+      const longitudeNum = parseFloat(row.longitude);
+      const latitudeNum = parseFloat(row.latitude);
+      if (isNaN(longitudeNum) || isNaN(latitudeNum)) return null;
+
+      return {
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [longitudeNum, latitudeNum] },
+        properties: { ...row, pointType: "income" },
+      };
+    })
+    .filter(Boolean);
+
+  await writeGeoJson(path.join(publicDir, "income_data.geojson"), {
+    type: "FeatureCollection",
+    features,
+  });
+}
+
+async function processLondonData() {
+  const data = await readCsv(path.join(publicDir, "london_data.csv"));
+  const features = data
+    .filter((row) => row.longitude && row.latitude)
+    .map((row) => {
+      const longitudeNum = parseFloat(row.longitude);
+      const latitudeNum = parseFloat(row.latitude);
+      if (isNaN(longitudeNum) || isNaN(latitudeNum)) return null;
+
+      return {
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [longitudeNum, latitudeNum] },
+        properties: { ...row, pointType: "london" },
+      };
+    })
+    .filter(Boolean);
+
+  await writeGeoJson(path.join(publicDir, "london_data.geojson"), {
+    type: "FeatureCollection",
+    features,
+  });
+}
+
 // Main function to run all processors
 async function main() {
   try {
@@ -171,9 +218,11 @@ async function main() {
 
     await Promise.all([
       // processCompetitionData(),
-      processCommercialLandData(),
+      // processCommercialLandData(),
       // processTrafficData(),
       // processPopulationChunks(),
+      // processIncomeData(),
+      processLondonData(),
     ]);
 
     console.log("Preprocessing finished successfully!");

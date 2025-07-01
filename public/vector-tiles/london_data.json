@@ -1,0 +1,24 @@
+{
+  "tilejson": "2.2.0",
+  "name": "london_data",
+  "description": "London data vector tiles",
+  "version": "1.0.0",
+  "scheme": "xyz",
+  "tiles": ["http://localhost:3001/vector-tiles/london-data/{z}/{x}/{y}.pbf"],
+  "minzoom": 8,
+  "maxzoom": 14,
+  "bounds": [-0.5103, 51.2868, 0.3340, 51.6919],
+  "center": [-0.1278, 51.5074, 10],
+  "attribution": "© London Data",
+  "vector_layers": [
+    {
+      "id": "london_data",
+      "description": "London data points",
+      "minzoom": 8,
+      "maxzoom": 14,
+      "fields": {
+        "pointType": "String"
+      }
+    }
+  ]
+}

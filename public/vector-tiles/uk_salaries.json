@@ -1,0 +1,25 @@
+{
+  "tilejson": "2.2.0",
+  "name": "uk_salaries",
+  "description": "UK salaries vector tiles",
+  "version": "1.0.0",
+  "scheme": "xyz",
+  "tiles": ["http://localhost:3001/vector-tiles/uk-salaries/{z}/{x}/{y}.pbf"],
+  "minzoom": 8,
+  "maxzoom": 14,
+  "bounds": [-8.6500, 49.8600, 1.7800, 60.8600],
+  "center": [-3.4360, 55.3781, 6],
+  "attribution": "© UK Salary Data",
+  "vector_layers": [
+    {
+      "id": "uk_salaries",
+      "description": "UK salary data points",
+      "minzoom": 8,
+      "maxzoom": 14,
+      "fields": {
+        "pointType": "String",
+        "salary": "Number"
+      }
+    }
+  ]
+}

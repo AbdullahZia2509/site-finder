@@ -1,18 +1,17 @@
 // MapComponent.tsx
 
-import { useRef, useEffect, useState, useCallback } from "react";
-import mapboxgl from "mapbox-gl";
+import React, { useEffect, useState, useRef, useCallback } from "react";
+import mapboxgl, { LngLatLike } from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import "@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css";
+import MapboxGeocoder from "@mapbox/mapbox-gl-geocoder";
 import {
-  loadVisiblePopulation, // We will no longer need this for the heatmap
+  GeoJSONFeature,
   readCommercialLandData,
   readCompetitionsData,
-  type GeoJSONFeature,
 } from "./CSVReader";
 import * as turf from "@turf/turf";
 import { booleanPointInPolygon } from "@turf/turf";
-import MapboxGeocoder from "@mapbox/mapbox-gl-geocoder";
-import "@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css";
 
 const INITIAL_CENTER: [number, number] = [-0.1278, 51.5074];
 const INITIAL_ZOOM = 10.12;
@@ -50,6 +49,8 @@ export default function MapComponent({
   const [showTrafficHeatmap, setShowTrafficHeatmap] = useState(true);
   const [showPopulationHeatmap, setShowPopulationHeatmap] = useState(true);
   const [showPopulationPoints, setShowPopulationPoints] = useState(false);
+  const [showLondonDataHeatmap, setShowLondonDataHeatmap] = useState(true);
+  const [showIncomesHeatmap, setShowIncomesHeatmap] = useState(true);
 
   // Effect for initial Mapbox GL JS map setup
   useEffect(() => {
@@ -68,10 +69,13 @@ export default function MapComponent({
     // Initialize Mapbox Geocoder (search box)
     const geocoder = new MapboxGeocoder({
       accessToken: mapboxgl.accessToken,
-      mapboxgl: mapboxgl,
-      marker: true,
-      types: "country, region, place, poi, postcode",
-      proximity: INITIAL_CENTER,
+      mapboxgl: mapboxgl as any, // Type assertion to avoid compatibility issues
+      marker: false,
+      placeholder: "Search for locations",
+      proximity: {
+        longitude: center[0],
+        latitude: center[1],
+      },
     });
 
     map.addControl(geocoder, "top-left");
@@ -110,6 +114,22 @@ export default function MapComponent({
       map.addSource("traffic-tiles", {
         type: "vector",
         url: "http://localhost:3001/vector-tiles/traffic.json",
+      });
+    }
+
+    // Add the London data vector tile source
+    if (!map.getSource("london-data-tiles")) {
+      map.addSource("london-data-tiles", {
+        type: "vector",
+        url: "http://localhost:3001/vector-tiles/london_data.json",
+      });
+    }
+
+    // Add the UK salaries vector tile source
+    if (!map.getSource("uk-salaries-tiles")) {
+      map.addSource("uk-salaries-tiles", {
+        type: "vector",
+        url: "http://localhost:3001/vector-tiles/uk_salaries.json",
       });
     }
 
@@ -302,6 +322,213 @@ export default function MapComponent({
       );
     }
 
+    // Add population heatmap layer
+    if (!map.getLayer("population-heat")) {
+      map.addLayer({
+        id: "population-heat",
+        type: "heatmap",
+        source: "postcode-tiles",
+        "source-layer": "postcode_to_bua_mapped",
+        paint: {
+          // Increase the heatmap weight based on frequency and property magnitude
+          "heatmap-weight": [
+            "interpolate",
+            ["linear"],
+            ["get", "population"],
+            0,
+            0,
+            20000,
+            1,
+          ],
+          // Increase the heatmap color weight weight by zoom level
+          // heatmap-intensity is a multiplier on top of heatmap-weight
+          "heatmap-intensity": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            0,
+            1,
+            9,
+            3,
+          ],
+          // Color ramp for heatmap.  Domain is 0 (low) to 1 (high).
+          // Begin color ramp at 0-stop with a 0-transparancy color
+          // to create a blur-like effect.
+          "heatmap-color": [
+            "interpolate",
+            ["linear"],
+            ["heatmap-density"],
+            0,
+            "rgba(236,222,239,0)",
+            0.2,
+            "rgb(208,209,230)",
+            0.4,
+            "rgb(166,189,219)",
+            0.6,
+            "rgb(103,169,207)",
+            0.8,
+            "rgb(28,144,153)",
+            1,
+            "rgb(1,108,89)",
+          ],
+          // Adjust the heatmap radius by zoom level
+          "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 0, 2, 9, 20],
+          // Transition from heatmap to circle layer by zoom level
+          "heatmap-opacity": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            7,
+            1,
+            9,
+            0.5,
+          ],
+        },
+        layout: {
+          visibility: showPopulationHeatmap ? "visible" : "none",
+        },
+      });
+    } else {
+      map.setLayoutProperty(
+        "population-heat",
+        "visibility",
+        showPopulationHeatmap ? "visible" : "none"
+      );
+    }
+
+    // Add London data heatmap layer
+    if (!map.getLayer("london-data-heat")) {
+      map.addLayer({
+        id: "london-data-heat",
+        type: "heatmap",
+        source: "london-data-tiles",
+        "source-layer": "london_data",
+        paint: {
+          // Increase the heatmap weight based on frequency and property magnitude
+          "heatmap-weight": 1,
+          // Increase the heatmap color weight weight by zoom level
+          "heatmap-intensity": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            0,
+            1,
+            9,
+            3,
+          ],
+          // Color ramp for heatmap.  Domain is 0 (low) to 1 (high).
+          "heatmap-color": [
+            "interpolate",
+            ["linear"],
+            ["heatmap-density"],
+            0,
+            "rgba(0,128,0,0)",
+            0.2,
+            "rgba(0,128,0,0.2)",
+            0.4,
+            "rgba(0,128,0,0.4)",
+            0.6,
+            "rgba(0,128,0,0.6)",
+            0.8,
+            "rgba(0,128,0,0.8)",
+            1,
+            "rgba(0,128,0,1)",
+          ],
+          // Adjust the heatmap radius by zoom level
+          "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 0, 2, 9, 20],
+          // Transition from heatmap to circle layer by zoom level
+          "heatmap-opacity": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            7,
+            1,
+            9,
+            0.5,
+          ],
+        },
+        layout: {
+          visibility: showLondonDataHeatmap ? "visible" : "none",
+        },
+      });
+    } else {
+      map.setLayoutProperty(
+        "london-data-heat",
+        "visibility",
+        showLondonDataHeatmap ? "visible" : "none"
+      );
+    }
+
+    // Add UK salaries heatmap layer
+    if (!map.getLayer("uk-salaries-heat")) {
+      map.addLayer({
+        id: "uk-salaries-heat",
+        type: "heatmap",
+        source: "uk-salaries-tiles",
+        "source-layer": "uk_salaries",
+        paint: {
+          // Increase the heatmap weight based on frequency and property magnitude
+          "heatmap-weight": [
+            "interpolate",
+            ["linear"],
+            ["get", "salary"],
+            0,
+            0,
+            100000,
+            1,
+          ],
+          // Increase the heatmap color weight weight by zoom level
+          "heatmap-intensity": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            0,
+            1,
+            9,
+            3,
+          ],
+          // Color ramp for heatmap.  Domain is 0 (low) to 1 (high).
+          "heatmap-color": [
+            "interpolate",
+            ["linear"],
+            ["heatmap-density"],
+            0,
+            "rgba(128,0,128,0)",
+            0.2,
+            "rgba(128,0,128,0.2)",
+            0.4,
+            "rgba(128,0,128,0.4)",
+            0.6,
+            "rgba(128,0,128,0.6)",
+            0.8,
+            "rgba(128,0,128,0.8)",
+            1,
+            "rgba(128,0,128,1)",
+          ],
+          // Adjust the heatmap radius by zoom level
+          "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 0, 2, 9, 20],
+          // Transition from heatmap to circle layer by zoom level
+          "heatmap-opacity": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            7,
+            1,
+            9,
+            0.5,
+          ],
+        },
+        layout: {
+          visibility: showIncomesHeatmap ? "visible" : "none",
+        },
+      });
+    } else {
+      map.setLayoutProperty(
+        "uk-salaries-heat",
+        "visibility",
+        showIncomesHeatmap ? "visible" : "none"
+      );
+    }
     const getDataAndAddLayers = async () => {
       try {
         const competitions = await readCompetitionsData();
@@ -880,75 +1107,109 @@ export default function MapComponent({
         Zoom: {zoom.toFixed(2)}
       </div>
 
-      <div className="legend">
-        <div className="legend-item">
-          <input
-            type="checkbox"
-            checked={showCommercialLayer}
-            onChange={() => setShowCommercialLayer(!showCommercialLayer)}
-          />
-          <div
-            className="legend-marker"
-            style={{ backgroundColor: "#1a73e8" }}
-          ></div>
-          <span>Commercial Sites</span>
-        </div>
-        <div className="legend-item">
-          <input
-            type="checkbox"
-            checked={showLocationsLayer}
-            onChange={() => setShowLocationsLayer(!showLocationsLayer)}
-          />
-          <div
-            className="legend-marker"
-            style={{ backgroundColor: "#FF0000" }}
-          ></div>
-          <span>Storage Sites</span>
-        </div>
+      <div className="map-controls">
+        <div className="legend">
+          <div className="legend-item">
+            <input
+              type="checkbox"
+              checked={showCommercialLayer}
+              onChange={() => setShowCommercialLayer(!showCommercialLayer)}
+            />
+            <div
+              className="legend-marker"
+              style={{ backgroundColor: "#4CAF50" }}
+            ></div>
+            <span>Commercial Land</span>
+          </div>
+          <div className="legend-item">
+            <input
+              type="checkbox"
+              checked={showLocationsLayer}
+              onChange={() => setShowLocationsLayer(!showLocationsLayer)}
+            />
+            <div
+              className="legend-marker"
+              style={{ backgroundColor: "#FF0000" }}
+            ></div>
+            <span>Storage Sites</span>
+          </div>
 
-        <div className="legend-item">
-          <input
-            type="checkbox"
-            checked={showTrafficHeatmap}
-            onChange={() => setShowTrafficHeatmap(!showTrafficHeatmap)}
-          />
-          <div
-            className="legend-marker"
-            style={{
-              background:
-                "linear-gradient(to right, green, yellow, orange, red)",
-              width: "20px",
-            }}
-          ></div>
-          <span>Traffic Heatmap</span>
-        </div>
-        <div className="legend-item">
-          <input
-            type="checkbox"
-            checked={showPopulationHeatmap}
-            onChange={() => setShowPopulationHeatmap(!showPopulationHeatmap)}
-          />
-          <div
-            className="legend-marker"
-            style={{
-              background:
-                "linear-gradient(to right, blue, cyan, lime, yellow, red)",
-              width: "20px",
-            }}
-          ></div>
-          <span>Population Heatmap</span>
-        </div>
-        <div className="legend-item">
-          <input
-            type="checkbox"
-            checked={showPopulationPoints}
-            onChange={() => setShowPopulationPoints(!showPopulationPoints)}
-          />
-          <div
-            className="legend-marker"
-            style={{ backgroundColor: "#007cbf" }}
-          ></div>
-          <span>Population Points</span>
+          <div className="legend-item">
+            <input
+              type="checkbox"
+              checked={showTrafficHeatmap}
+              onChange={() => setShowTrafficHeatmap(!showTrafficHeatmap)}
+            />
+            <div
+              className="legend-marker"
+              style={{
+                background:
+                  "linear-gradient(to right, green, yellow, orange, red)",
+                width: "20px",
+              }}
+            ></div>
+            <span>Traffic Heatmap</span>
+          </div>
+          <div className="legend-item">
+            <input
+              type="checkbox"
+              checked={showPopulationHeatmap}
+              onChange={() => setShowPopulationHeatmap(!showPopulationHeatmap)}
+            />
+            <div
+              className="legend-marker"
+              style={{
+                background:
+                  "linear-gradient(to right, blue, cyan, lime, yellow, red)",
+                width: "20px",
+              }}
+            ></div>
+            <span>Population Heatmap</span>
+          </div>
+          <div className="legend-item">
+            <input
+              type="checkbox"
+              checked={showPopulationPoints}
+              onChange={() => setShowPopulationPoints(!showPopulationPoints)}
+            />
+            <div
+              className="legend-marker"
+              style={{ backgroundColor: "#007cbf" }}
+            ></div>
+            <span>Population Points</span>
+          </div>
+          <div className="legend-item">
+            <input
+              type="checkbox"
+              checked={showLondonDataHeatmap}
+              onChange={() => setShowLondonDataHeatmap(!showLondonDataHeatmap)}
+            />
+            <div
+              className="legend-marker"
+              style={{
+                background:
+                  "linear-gradient(to right, #c6ffdd, #68b35c, #267326)",
+                width: "20px",
+              }}
+            ></div>
+            <span>London Data Heatmap</span>
+          </div>
+          <div className="legend-item">
+            <input
+              type="checkbox"
+              checked={showIncomesHeatmap}
+              onChange={() => setShowIncomesHeatmap(!showIncomesHeatmap)}
+            />
+            <div
+              className="legend-marker"
+              style={{
+                background:
+                  "linear-gradient(to right, #e6ccff, #9966ff, #6600cc)",
+                width: "20px",
+              }}
+            ></div>
+            <span>UK Salaries Heatmap</span>
+          </div>
         </div>
       </div>
 

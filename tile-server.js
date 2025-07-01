@@ -64,6 +64,8 @@ async function openMBTiles(name, filename) {
     await openMBTiles("competitions", "competition_data.mbtiles");
     await openMBTiles("commercial_land", "commercial_land.mbtiles");
     await openMBTiles("traffic", "traffic_data.mbtiles");
+    await openMBTiles("london_data", "london_data.mbtiles");
+    await openMBTiles("uk_salaries", "uk_salaries.mbtiles");
   } catch (error) {
     console.error("Failed to initialize one or more MBTiles files:", error);
     // Depending on criticality, you might want to exit the process here
@@ -175,6 +177,36 @@ app.get("/vector-tiles/traffic.json", (req, res) => {
   res.sendFile(tilesJsonPath);
 });
 
+// Routes for london_data tiles and metadata
+app.get("/vector-tiles/london-data/:z/:x/:y.pbf", (req, res) =>
+  handleTileRequest(req, res, "london_data")
+);
+app.get("/vector-tiles/london-data.json", (req, res) => {
+  const tilesJsonPath = path.join(
+    __dirname,
+    "public",
+    "vector-tiles",
+    "london_data.json"
+  );
+  console.log("Serving london_data.json from:", tilesJsonPath);
+  res.sendFile(tilesJsonPath);
+});
+
+// Routes for uk_salaries tiles and metadata
+app.get("/vector-tiles/uk-salaries/:z/:x/:y.pbf", (req, res) =>
+  handleTileRequest(req, res, "uk_salaries")
+);
+app.get("/vector-tiles/uk-salaries.json", (req, res) => {
+  const tilesJsonPath = path.join(
+    __dirname,
+    "public",
+    "vector-tiles",
+    "uk_salaries.json"
+  );
+  console.log("Serving uk_salaries.json from:", tilesJsonPath);
+  res.sendFile(tilesJsonPath);
+});
+
 // Start the server
 app.listen(port, "0.0.0.0", () => {
   console.log(`Tile server running at http://0.0.0.0:${port}`);
@@ -190,5 +222,11 @@ app.listen(port, "0.0.0.0", () => {
   );
   console.log(
     ` - traffic_data.mbtiles: http://0.0.0.0:${port}/vector-tiles/traffic/{z}/{x}/{y}.pbf`
+  );
+  console.log(
+    ` - london_data.mbtiles: http://0.0.0.0:${port}/vector-tiles/london-data/{z}/{x}/{y}.pbf`
+  );
+  console.log(
+    ` - uk_salaries.mbtiles: http://0.0.0.0:${port}/vector-tiles/uk-salaries/{z}/{x}/{y}.pbf`
   );
 });

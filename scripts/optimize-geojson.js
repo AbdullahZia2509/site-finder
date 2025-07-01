@@ -13,11 +13,13 @@ const VECTOR_TILES_DIR = join(__dirname, "../../public/vector-tiles");
 
 // Files to process
 const FILES_TO_OPTIMIZE = [
-  //   'competition_data.geojson',
-  //   'commercial_land.geojson',
+  // 'competition_data.geojson',
+  // 'commercial_land.geojson',
   // "traffic_data.geojson",
   // "postcode_to_bua_mapped.csv", // Replaced population_data.geojson with the CSV file
   // "postcode_with_london_data.csv",
+  "london_data.geojson",
+  "uk_salaries.geojson"
 ];
 
 // Create output directories if they don't exist

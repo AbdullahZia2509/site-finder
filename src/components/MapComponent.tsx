@@ -41,6 +41,12 @@ export default function MapComponent({
   const [selectedTrafficPoints, setSelectedTrafficPoints] = useState<
     GeoJSONFeature[]
   >([]);
+  const [selectedIncomePoints, setSelectedIncomePoints] = useState<
+    GeoJSONFeature[]
+  >([]);
+  const [selectedLondonDataPoints, setSelectedLondonDataPoints] = useState<
+    GeoJSONFeature[]
+  >([]);
   const [drawingCircle, setDrawingCircle] = useState(false);
   const [radius, setRadius] = useState<number>(1000); // in meters
   const [showCommercialLayer, setShowCommercialLayer] = useState(true);
@@ -884,9 +890,91 @@ export default function MapComponent({
         trafficPoints.push(...filteredTrafficPoints);
       }
 
+      // Filter income points within the circle
+      const incomePoints: GeoJSONFeature[] = [];
+      if (map.getSource("uk-salaries-tiles")) {
+        // Get features from the uk-salaries-tiles source
+        const incomeFeatures = map.querySourceFeatures("uk-salaries-tiles", {
+          sourceLayer: "uk_salaries",
+        });
+
+        // Convert to GeoJSONFeature format and filter by circle
+        const filteredIncomePoints = incomeFeatures
+          .map((feature) => {
+            return {
+              type: "Feature",
+              geometry: {
+                type: "Point",
+                coordinates:
+                  feature.geometry.type === "Point"
+                    ? (feature.geometry as any).coordinates
+                    : [0, 0],
+              },
+              properties: {
+                ...feature.properties,
+                pointType: "income",
+              },
+            } as GeoJSONFeature;
+          })
+          .filter((pointFeature) => {
+            try {
+              const pt = turf.point(pointFeature.geometry.coordinates);
+              const polygonGeoJSON = circleGeoJSON.geometry as GeoJSON.Polygon;
+              const poly = turf.polygon(polygonGeoJSON.coordinates);
+              return booleanPointInPolygon(pt, poly);
+            } catch (error) {
+              return false;
+            }
+          });
+
+        incomePoints.push(...filteredIncomePoints);
+      }
+      
+      // Filter London data points within the circle
+      const londonDataPoints: GeoJSONFeature[] = [];
+      if (map.getSource("london-data-tiles")) {
+        // Get features from the london-data-tiles source
+        const londonFeatures = map.querySourceFeatures("london-data-tiles", {
+          sourceLayer: "london_data",
+        });
+
+        // Convert to GeoJSONFeature format and filter by circle
+        const filteredLondonPoints = londonFeatures
+          .map((feature) => {
+            return {
+              type: "Feature",
+              geometry: {
+                type: "Point",
+                coordinates:
+                  feature.geometry.type === "Point"
+                    ? (feature.geometry as any).coordinates
+                    : [0, 0],
+              },
+              properties: {
+                ...feature.properties,
+                pointType: "london",
+              },
+            } as GeoJSONFeature;
+          })
+          .filter((pointFeature) => {
+            try {
+              const pt = turf.point(pointFeature.geometry.coordinates);
+              const polygonGeoJSON = circleGeoJSON.geometry as GeoJSON.Polygon;
+              const poly = turf.polygon(polygonGeoJSON.coordinates);
+              return booleanPointInPolygon(pt, poly);
+            } catch (error) {
+              return false;
+            }
+          });
+
+        londonDataPoints.push(...filteredLondonPoints);
+      }
+
       setSelectedPoints(visibleCommercialAndCompetitionPoints);
       setSelectedPopulationPoints(populationPoints);
       setSelectedTrafficPoints(trafficPoints);
+      setSelectedIncomePoints(incomePoints);
+      setSelectedLondonDataPoints(londonDataPoints);
       setDrawingCircle(false);
       map.off("click", onClick); // Remove click listener after drawing
     };
@@ -1221,7 +1309,9 @@ export default function MapComponent({
               selectedCommercialSites,
               circleCompetitors,
               selectedPopulationPoints,
-              selectedTrafficPoints
+              selectedTrafficPoints,
+              selectedIncomePoints,
+              selectedLondonDataPoints
             );
             if (csv) {
               const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -1353,7 +1443,9 @@ function convertToCSV(
   commercialSites: GeoJSONFeature[],
   competitors: GeoJSONFeature[],
   populationPoints: GeoJSONFeature[],
-  trafficPoints: GeoJSONFeature[]
+  trafficPoints: GeoJSONFeature[],
+  incomePoints: GeoJSONFeature[],
+  londonDataPoints: GeoJSONFeature[]
 ): string {
   // Only export if there are commercial sites
   if (commercialSites.length === 0) return "";
@@ -1419,9 +1511,13 @@ function convertToCSV(
   headerRow.push("POPULATION DATA");
   headerRow.push("TOTAL POPULATION");
 
-  // INCOME DATA section (placeholder for future)
+  // INCOME DATA section
   headerRow.push("INCOME DATA");
-  headerRow.push("INCOME 1", "INCOME 2", "INCOME 3", "INCOME 4");
+  headerRow.push("AVG SALARY", "MIN SALARY", "MAX SALARY", "DATA POINTS");
+  
+  // LONDON DATA section
+  headerRow.push("LONDON DATA");
+  headerRow.push("POPULATION");
 
   // Add header row to rows
   rows.push(headerRow);
@@ -1520,7 +1616,78 @@ function convertToCSV(
 
     // INCOME DATA
     dataRow.push(""); // Section header
-    dataRow.push("", "", "", ""); // INCOME 1-4
+    
+    // Process income data if available
+    if (incomePoints.length > 0) {
+      // Calculate average salary in the area
+      let totalSalary = 0;
+      let salaryCount = 0;
+      
+      incomePoints.forEach((point) => {
+        const salary = Number(point.properties.salary);
+        if (!isNaN(salary) && salary > 0) {
+          totalSalary += salary;
+          salaryCount++;
+        }
+      });
+      
+      const avgSalary = salaryCount > 0 ? Math.round(totalSalary / salaryCount) : 0;
+      
+      // Find min and max salaries
+      let minSalary = Number.MAX_VALUE;
+      let maxSalary = 0;
+      
+      incomePoints.forEach((point) => {
+        const salary = Number(point.properties.salary);
+        if (!isNaN(salary) && salary > 0) {
+          minSalary = Math.min(minSalary, salary);
+          maxSalary = Math.max(maxSalary, salary);
+        }
+      });
+      
+      if (minSalary === Number.MAX_VALUE) minSalary = 0;
+      
+      // Add income data to the row
+      dataRow.push(String(avgSalary)); // Average salary
+      dataRow.push(String(minSalary)); // Min salary
+      dataRow.push(String(maxSalary)); // Max salary
+      dataRow.push(String(salaryCount)); // Number of salary data points
+    } else {
+      // Add placeholder if no income data
+      dataRow.push("", "", "", ""); // INCOME 1-4
+    }
+    
+    // LONDON DATA
+    dataRow.push(""); // Section header
+    
+    // Process London data if available
+    if (londonDataPoints.length > 0) {
+      // Calculate total London population
+      let totalPopulation = 0;
+      
+      // Create a Set to track unique London data points to avoid double-counting
+      const uniqueIds = new Set<string>();
+      
+      londonDataPoints.forEach((point) => {
+        // Use a unique identifier for each point to avoid duplicates
+        const pointId = `${point.geometry.coordinates[0]}-${point.geometry.coordinates[1]}`;
+        
+        if (!uniqueIds.has(pointId)) {
+          uniqueIds.add(pointId);
+          
+          // Use the correct property name 'Population Total' for London data
+          const population = Number(point.properties["Population Total"] || 0);
+          
+          if (!isNaN(population)) totalPopulation += population;
+        }
+      });
+      
+      // Add London population data to the row
+      dataRow.push(String(totalPopulation)); // Population
+    } else {
+      // Add placeholder if no London data
+      dataRow.push("");
+    }
 
     rows.push(dataRow);
   });

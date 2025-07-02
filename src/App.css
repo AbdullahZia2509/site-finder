@@ -260,7 +260,7 @@ a:hover {
 /* Selected Points Box Styles */
 .selected-points-box {
   position: absolute;
-  top: 260px;
+  top: 300px;
   right: 10px;
   background: rgba(255, 255, 255, 0.95);
   padding: 15px;

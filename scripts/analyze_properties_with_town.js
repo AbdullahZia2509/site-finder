@@ -107,6 +107,61 @@ function isWithinRadius(coords1, coords2, radiusKm) {
   return distanceMeters / 1000 <= radiusKm;
 }
 
+// --- NEW: Function to get town from postcode using postcodes.io API ---
+const postcodeCache = new Map(); // Cache to store postcode results and avoid repeated API calls
+
+/**
+ * Gets the post town for a given full UK postcode using the postcodes.io API.
+ * Caches results to reduce API calls.
+ * @param {string} fullPostcode - The full UK postcode (e.g., "SW1A 0AA").
+ * @returns {Promise<string>} The post town, or "N/A" if not found or an error occurs.
+ */
+async function getTownFromPostcode(fullPostcode) {
+  if (!fullPostcode || fullPostcode.trim() === "") {
+    return "N/A (Missing Postcode)";
+  }
+
+  const normalizedPostcode = fullPostcode.toUpperCase().replace(/\s/g, ""); // Normalize: uppercase, no spaces
+
+  if (postcodeCache.has(normalizedPostcode)) {
+    return postcodeCache.get(normalizedPostcode);
+  }
+
+  try {
+    // console.log(`[INFO] Looking up town for postcode: ${normalizedPostcode} via API...`);
+    const response = await fetch(
+      `https://api.postcodes.io/postcodes/${normalizedPostcode}`
+    );
+    const data = await response.json();
+
+    if (data.status === 200 && data.result && data.result.post_town) {
+      const town = data.result.post_town;
+      postcodeCache.set(normalizedPostcode, town);
+      return town;
+    } else if (data.status === 404) {
+      // console.warn(`[WARN] Postcode not found: ${normalizedPostcode}`);
+      postcodeCache.set(normalizedPostcode, "N/A (Postcode Not Found)");
+      return "N/A (Postcode Not Found)";
+    } else {
+      console.error(
+        `[ERROR] API error for postcode ${normalizedPostcode}: ${
+          data.error || "Unknown error"
+        }`
+      );
+      postcodeCache.set(normalizedPostcode, "N/A (API Error)");
+      return "N/A (API Error)";
+    }
+  } catch (error) {
+    console.error(
+      `[ERROR] Failed to fetch town for postcode ${normalizedPostcode}:`,
+      error.message
+    );
+    postcodeCache.set(normalizedPostcode, "N/A (API Fetch Failed)");
+    return "N/A (API Fetch Failed)";
+  }
+}
+// --- END NEW FUNCTION ---
+
 // --- Main Analysis Function ---
 async function analyzeCommercialLand() {
   console.time("Total Analysis Time");
@@ -277,6 +332,31 @@ async function analyzeCommercialLand() {
     let populationFoundFlag = "";
     let nearbySalaries = [];
     let incomeFoundFlag = "";
+    let townName = "N/A"; // NEW: Initialize townName
+
+    // --- NEW: Extract and get town from postcode ---
+    const outcode = getFeatureProperty(landPropertyFeature, "outcode");
+    const incode = getFeatureProperty(landPropertyFeature, "incode");
+    let fullPostcode = "";
+
+    if (outcode && incode) {
+      fullPostcode = `${outcode} ${incode}`;
+      townName = await getTownFromPostcode(fullPostcode); // Await the API call for town
+    } else if (outcode) {
+      // If only outcode is present, try to get town, might be less precise or require a different API strategy
+      // For postcodes.io, a full postcode is ideal. We'll still try but mark if missing incode.
+      fullPostcode = outcode; // Just the outcode
+      townName = await getTownFromPostcode(fullPostcode);
+      if (
+        townName === "N/A (Postcode Not Found)" ||
+        townName === "N/A (API Error)"
+      ) {
+        townName = "N/A (Missing Incode)"; // More specific if full lookup failed without incode
+      }
+    } else {
+      townName = "N/A (No Postcode Data)";
+    }
+    // --- END NEW POSTCODE/TOWN EXTRACTION ---
 
     // --- Find nearby competitors ---
     for (const competitorFeature of competitionFeatures) {
@@ -478,6 +558,10 @@ async function analyzeCommercialLand() {
         landPropertyFeature,
         "brokerProfileUrl"
       ),
+      // NEW: Add Postcode and Town
+      POSTCODE: fullPostcode,
+      TOWN: townName,
+      // END NEW
       "TRAFFIC DATA": trafficFoundFlag,
       "TOTAL ON THAT POSTCODE": totalTraffic, // Now holds the nearest traffic value
       "POPULATION DATA": populationFoundFlag,
@@ -504,6 +588,8 @@ async function analyzeCommercialLand() {
       "brokerDisplayAddress",
       "brokerDisplayName",
       "brokerProfileUrl",
+      "POSTCODE", // NEW: Added Postcode
+      "TOWN", // NEW: Added Town
       "TRAFFIC DATA",
       "TOTAL ON THAT POSTCODE",
       "POPULATION DATA",
@@ -548,6 +634,8 @@ async function analyzeCommercialLand() {
         String(row["brokerDisplayAddress"]),
         String(row["brokerDisplayName"]),
         String(row["brokerProfileUrl"]),
+        String(row["POSTCODE"]), // NEW: Add Postcode value
+        String(row["TOWN"]), // NEW: Add Town value
         String(row["TRAFFIC DATA"]),
         String(row["TOTAL ON THAT POSTCODE"]),
         String(row["POPULATION DATA"]),
@@ -578,6 +666,7 @@ async function analyzeCommercialLand() {
       return rowValues
         .map((value) => {
           const stringValue = String(value);
+          // CSV escaping logic
           if (
             stringValue.includes(",") ||
             stringValue.includes('"') ||

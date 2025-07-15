@@ -18,8 +18,8 @@ const FILES_TO_OPTIMIZE = [
   // "traffic_data.geojson",
   // "postcode_to_bua_mapped.csv", // Replaced population_data.geojson with the CSV file
   // "postcode_with_london_data.csv",
-  "london_data.geojson",
-  "uk_salaries.geojson"
+  // "london_data.geojson",
+  // "uk_salaries.geojson"
 ];
 
 // Create output directories if they don't exist
